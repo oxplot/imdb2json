@@ -65,21 +65,36 @@ def main():
   )
 
   args = parser.parse_args()
+  mixer = globals()['mix_' + args.kind]
 
   parsers = [globals()['parse_' + f.replace('-', '_')](
       os.path.join(args.dir, f + '.list.gz')
   ) for f in FILES[args.kind]]
 
-  mixer = globals()['mix_' + args.kind]
+  if not args.line:
+    print('[')
+    first_line = True
 
   for id, tuples in itertools.groupby(
     heapq.merge(*parsers), key=lambda x: x[0]
   ):
+
+    if not args.line:
+      if first_line:
+        first_line = False
+      else:
+        print(',')
+
     rec = {'#': id}
     for _, rtype, obj in tuples:
       mixer(rec, rtype, obj)
     json.dump(rec, sys.stdout, separators=(',', ':'), sort_keys=True)
-    sys.stdout.write('\n')
+
+    if args.line:
+      print()
+
+  if not args.line:
+    print('\n]')
 
 if __name__ == '__main__':
   main()
