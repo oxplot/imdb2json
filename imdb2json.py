@@ -19,23 +19,56 @@ FILES = {
 def imdb_parser(fn):
   def _fn(path):
     if not os.path.exists(path):
-      return ()
+      return
     with gzip.open(path, 'rt', encoding='latin1') as f:
-      return fn((l.rstrip() for l in f))
+      yield from fn(filter(bool, (l.rstrip() for l in f)))
   return _fn
+
+def skip_till(f, mark):
+  buf = []
+  for l in f:
+    buf.append(l)
+    if buf[-len(mark):] == mark:
+      break
 
 @imdb_parser
 def parse_movies(f):
-  yield (1,2,3)
-  yield (4,9,6)
+
+  skip_till(f, ['MOVIES LIST', '==========='])
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = l.split('\t')
+    yr = [None if x == '????' else int(x) for x in l[-1].split('-', 1)]
+    yield l[0], 'movies', yr
 
 @imdb_parser
 def parse_taglines(f):
-  yield (1,2,4)
-  yield (4,5,6)
+
+  skip_till(f, ['TAG LINES LIST', '=============='])
+
+  id, tags = None, None
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    if l.startswith('#'):
+      if id:
+        yield id, 'taglines', tags
+      id, tags = l[2:], []
+    elif l.startswith('\t'):
+      tags.append(l[1:])
+
+  if id:
+    yield id, 'taglines', tags
 
 def mix_title(title, rtype, obj):
-  pass
+  if 'cat' not in title:
+    pass # TODO
+  if rtype == 'movies':
+    title['yr'] = obj
+  elif rtype == 'taglines':
+    title['taglines'] = obj
 
 def mix_name(name, rtype, obj):
   pass
@@ -74,9 +107,10 @@ def main():
   if not args.line:
     print('[')
     first_line = True
-
+  
   for id, tuples in itertools.groupby(
-    heapq.merge(*parsers), key=lambda x: x[0]
+    heapq.merge(*parsers, key=lambda x: x[0].lower()),
+    key=lambda x: x[0]
   ):
 
     if not args.line:
