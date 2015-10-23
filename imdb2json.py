@@ -13,7 +13,7 @@ import sys
 
 FILES = {
   'name': ['actors', 'biographies'],
-  'title': ['movies', 'taglines'],
+  'title': ['movies', 'taglines', 'trivia'],
 }
 
 def imdb_parser(fn):
@@ -48,19 +48,44 @@ def parse_taglines(f):
 
   skip_till(f, ['TAG LINES LIST', '=============='])
 
-  id, tags = None, None
+  id, tags = None, []
   for l in f:
     if l.startswith('--------------'):
       break
     if l.startswith('#'):
-      if id:
+      if tags:
         yield id, 'taglines', tags
       id, tags = l[2:], []
     elif l.startswith('\t'):
       tags.append(l[1:])
 
-  if id:
+  if tags:
     yield id, 'taglines', tags
+
+@imdb_parser
+def parse_trivia(f):
+
+  skip_till(f, ['FILM TRIVIA', '==========='])
+
+  id, trivia, lines = None, [], []
+  for l in f:
+    if l.startswith('#'):
+      if lines:
+        trivia.append(' '.join(lines))
+      if trivia:
+        yield id, 'trivia', trivia
+      id, trivia, lines = l[2:], [], []
+    elif l.startswith('- '):
+      if lines:
+        trivia.append(' '.join(lines))
+      lines = [l[2:]]
+    elif l.startswith('  '):
+      lines.append(l[2:])
+
+  if lines:
+    trivia.append(' '.join(lines))
+  if trivia:
+    yield id, 'trivia', trivia
 
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
@@ -69,6 +94,8 @@ def mix_title(title, rtype, obj):
     title['yr'] = obj
   elif rtype == 'taglines':
     title['taglines'] = obj
+  elif rtype == 'trivia':
+    title['trivia'] = obj
 
 def mix_name(name, rtype, obj):
   pass
