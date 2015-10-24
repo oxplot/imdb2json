@@ -9,11 +9,12 @@ import heapq
 import itertools
 import json
 import os
+import re
 import sys
 
 FILES = {
   'name': ['actors', 'biographies'],
-  'title': ['movies', 'taglines', 'trivia'],
+  'title': ['movies', 'taglines', 'trivia', 'running-times'],
 }
 
 def imdb_parser(fn):
@@ -78,14 +79,73 @@ def parse_trivia(f):
     elif l.startswith('- '):
       if lines:
         trivia.append(' '.join(lines))
-      lines = [l[2:]]
+      lines = [l[2:].strip()]
     elif l.startswith('  '):
-      lines.append(l[2:])
+      lines.append(l[2:].strip())
 
   if lines:
     trivia.append(' '.join(lines))
   if trivia:
     yield id, 'trivia', trivia
+
+@imdb_parser
+def parse_running_times(f):
+
+  skip_till(f, ['RUNNING TIMES LIST', '=================='])
+
+  rt_pat = re.compile(r'''
+    ^(?:(?P<country>[^:]+):)? # optional country
+    \s*(?:
+      (?P<H>\d+):(?P<M>\d+):(?P<S>\d+) # H,M,S
+    |
+      (?P<M2>\d+)
+      (?:
+        \s*(?:[:,']|m|min[s.]?|minutes)\s*
+        (?:(?P<S2>\d+)\s*(?:"|''|s|sec[.s]?|seconds)?)?
+      )? # M,S
+    |
+      (?P<M3>\d+)\.(?P<S3>\d+) # M.S
+    )(?:\s*[x*].*|\s*\d+\s*episodes)?$
+    ''', re.X | re.I
+  )
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+
+    rt = rt_pat.match(l[1])
+    if rt:
+      # FIXME even if we match country fine, we can still fail the
+      #       complete match and hence lose the country info too
+      country = (rt.group('country') or '').strip() or None
+      if rt.group('M2'):
+        secs = int(rt.group('M2')) * 60
+        if rt.group('S2'):
+          secs += int(rt.group('S2'))
+      elif rt.group('H'):
+        secs = int(rt.group('H')) * 3600 \
+          + int(rt.group('M')) * 60 + int(rt.group('S'))
+      elif rt.group('M3'):
+        secs = int(rt.group('M3')) * 60
+        secs += 30 if rt.group('S3') == '5' else int(rt.group('S3'))
+    else:
+      secs = None
+      print('bad-running-time:', l, file=sys.stderr)
+
+    note = l[2].strip() if len(l) > 2 else ''
+    if note[:1] == '(':
+      note = note[1:]
+    if note[-1:] == ')':
+      note = note[:-1]
+    note = note.strip() or None
+
+    obj = {}
+    for k, v in zip(['secs', 'country', 'note'], [secs, country, note]):
+      if v is not None:
+        obj[k] = v
+
+    yield l[0], 'running-times', obj
 
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
@@ -96,6 +156,12 @@ def mix_title(title, rtype, obj):
     title['taglines'] = obj
   elif rtype == 'trivia':
     title['trivia'] = obj
+  elif rtype == 'running-times':
+    runtimes = title.get('runtimes')
+    if runtimes:
+      runtimes.append(obj)
+    else:
+      title['runtimes'] = [obj]
 
 def mix_name(name, rtype, obj):
   pass
