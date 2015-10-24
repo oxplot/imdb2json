@@ -16,7 +16,8 @@ import sys
 FILES = {
   'name': ['actors', 'biographies'],
   'title': [
-    'movies', 'taglines', 'trivia', 'running-times', 'keywords'
+    'movies', 'taglines', 'trivia', 'running-times', 'keywords',
+    'genres'
   ],
 }
 
@@ -165,6 +166,15 @@ def parse_keywords(f):
     l = l.split('\t')
     yield l[0], 'keywords', l[-1].strip()
 
+@imdb_parser
+def parse_genres(f):
+
+  skip_till(f, ['8: THE GENRES LIST', '=================='])
+
+  for l in f:
+    l = l.split('\t')
+    yield l[0], 'genres', l[-1].strip()
+
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
     pass # TODO
@@ -186,6 +196,12 @@ def mix_title(title, rtype, obj):
       keywords.add(obj)
     else:
       title['keywords'] = set([obj])
+  elif rtype == 'genres':
+    genres = title.get('genres')
+    if genres:
+      genres.add(obj)
+    else:
+      title['genres'] = set([obj])
 
 def mix_name(name, rtype, obj):
   pass
