@@ -4,6 +4,7 @@
 # Copyright (C) 2015 Mansour Behabadi <mansour@oxplot.com>
 
 import argparse
+import collections
 import gzip
 import heapq
 import itertools
@@ -26,10 +27,10 @@ def imdb_parser(fn):
   return _fn
 
 def skip_till(f, mark):
-  buf = []
+  deq = collections.deque(maxlen=len(mark))
   for l in f:
-    buf.append(l)
-    if buf[-len(mark):] == mark:
+    deq.append(l)
+    if list(deq) == mark:
       break
 
 @imdb_parser
