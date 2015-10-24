@@ -15,7 +15,9 @@ import sys
 
 FILES = {
   'name': ['actors', 'biographies'],
-  'title': ['movies', 'taglines', 'trivia', 'running-times'],
+  'title': [
+    'movies', 'taglines', 'trivia', 'running-times', 'keywords'
+  ],
 }
 
 def imdb_parser(fn):
@@ -32,6 +34,12 @@ def skip_till(f, mark):
     deq.append(l)
     if list(deq) == mark:
       break
+
+def json_def(o):
+  if isinstance(o, set):
+    return list(sorted(o, key=lambda x: x.lower()))
+  else:
+    raise TypeError()
 
 @imdb_parser
 def parse_movies(f):
@@ -148,6 +156,15 @@ def parse_running_times(f):
 
     yield l[0], 'running-times', obj
 
+@imdb_parser
+def parse_keywords(f):
+
+  skip_till(f, ['8: THE KEYWORDS LIST', '===================='])
+
+  for l in f:
+    l = l.split('\t')
+    yield l[0], 'keywords', l[-1].strip()
+
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
     pass # TODO
@@ -163,6 +180,12 @@ def mix_title(title, rtype, obj):
       runtimes.append(obj)
     else:
       title['runtimes'] = [obj]
+  elif rtype == 'keywords':
+    keywords = title.get('keywords')
+    if keywords:
+      keywords.add(obj)
+    else:
+      title['keywords'] = set([obj])
 
 def mix_name(name, rtype, obj):
   pass
@@ -216,7 +239,10 @@ def main():
     rec = {'#': id}
     for _, rtype, obj in tuples:
       mixer(rec, rtype, obj)
-    json.dump(rec, sys.stdout, separators=(',', ':'), sort_keys=True)
+    json.dump(
+      rec, sys.stdout, separators=(',', ':'), sort_keys=True,
+      default=json_def
+    )
 
     if args.line:
       print()
