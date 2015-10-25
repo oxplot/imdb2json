@@ -335,11 +335,43 @@ def parse_biographies(f):
 
   def build_bio(b):
     bio = {}
-    b['BG'] = ' '.join(i if i else '\n' for i in b['BG'])
-    b['BG'] = b['BG'].replace(' \n ', '\n').strip()
-    if b['BG']:
-      bio['biography'] = b['BG']
-    # TODO parse the rest of the types
+    bio_texts = []
+
+    for text, by in b['BIO']:
+      text = ' '.join(i if i else '\n' for i in text)
+      text = text.replace(' \n ', '\n').strip()
+      if text:
+        bio_texts.append({'text': text, 'by': by})
+    if bio_texts:
+      bio['biographies'] = bio_texts
+
+    for short, long in [
+      ('OW', 'other_works'), ('BO', 'print_biography'),
+      ('QU', 'quotes'), ('IT', 'interviews'), ('AT', 'articles'),
+      ('CV', 'cover_photos'), ('TR', 'trivia'), ('SP', 'spuoses'),
+      ('PT', 'pictorials'), ('TM', 'trademarks'), ('PI', 'portrayals'),
+      ('SA', 'salaries'), ('BT', 'biographical_movies')
+    ]:
+      coll, el = [], []
+      for l in b[short]:
+        if l.startswith('*'):
+          if el:
+            coll.append(' '.join(el))
+          el = []
+        el.append(l[2:])
+      if el:
+        coll.append(' '.join(el))
+      if coll:
+        bio[long] = coll
+
+    for short, long in [
+      ('DD', 'date_of_death'), ('DB', 'date_of_birth'),
+      ('HT', 'height'), ('RN', 'real_name')
+    ]:
+      if b[short]:
+        bio[long] = b[short][0]
+
+    # TODO data extraction for various fields (e.g. DOB)
     return bio
 
   id, bio = None, collections.defaultdict(list)
@@ -352,6 +384,9 @@ def parse_biographies(f):
       l = l.split(':', 1)
       if l[0] == 'NM':
         id = l[1][1:]
+      elif l[0] == 'BY':
+        bio['BIO'].append((bio['BG'], l[1][1:]))
+        del bio['BG']
       else:
         bio[l[0]].append(l[1][1:])
   if bio and id:
