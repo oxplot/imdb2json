@@ -20,7 +20,7 @@ FILES = {
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
-    'genres', 'technical', 'aka-titles'
+    'genres', 'technical', 'aka-titles', 'alternate-versions'
   ],
 }
 
@@ -76,25 +76,38 @@ def parse_trivia(f):
 
   skip_till(f, 2, r'^FILM TRIVIA\n={8}')
 
-  id, trivia, lines = None, [], []
+  yield from parse_bullet_pt(f, 'trivia')
+
+@imdb_parser
+def parse_alternate_versions(f):
+
+  skip_till(f, 2, r'^ALTERNATE VERSIONS LIST\n={8}')
+
+  yield from parse_bullet_pt(f, 'alternate-versions')
+
+def parse_bullet_pt(f, rtype):
+
+  id, pt, lines = None, [], []
   for l in f:
+    if l.startswith('--------------'):
+      break
     if l.startswith('#'):
       if lines:
-        trivia.append(' '.join(lines))
-      if trivia:
-        yield id, 'trivia', trivia
-      id, trivia, lines = l[2:], [], []
+        pt.append(' '.join(lines))
+      if pt:
+        yield id, rtype, pt
+      id, pt, lines = l[2:], [], []
     elif l.startswith('- '):
       if lines:
-        trivia.append(' '.join(lines))
+        pt.append(' '.join(lines))
       lines = [l[2:].strip()]
     elif l.startswith('  '):
       lines.append(l[2:].strip())
 
   if lines:
-    trivia.append(' '.join(lines))
-  if trivia:
-    yield id, 'trivia', trivia
+    pt.append(' '.join(lines))
+  if pt:
+    yield id, rtype, pt
 
 @imdb_parser
 def parse_running_times(f):
@@ -323,6 +336,8 @@ def mix_title(title, rtype, obj):
     title['taglines'] = obj
   elif rtype == 'trivia':
     title['trivia'] = obj
+  elif rtype == 'alternate-versions':
+    title['alternates'] = obj
   elif rtype == 'running-times':
     runtimes = title.get('runtimes')
     if runtimes:
