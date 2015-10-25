@@ -16,7 +16,7 @@ import sys
 FILES = {
   'name': [
     'actors', 'actresses', 'cinematographers', 'composers', 'directors',
-    'costume-designers', 'editors', 'producers'
+    'costume-designers', 'editors', 'producers', 'writers'
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
@@ -205,6 +205,10 @@ def parse_editors(f):
 def parse_producers(f):
   yield from parse_people(f, 'producers', 'producer')
 
+@imdb_parser
+def parse_writers(f):
+  yield from parse_people(f, 'writers', 'writer')
+
 def parse_people(f, rtype, prole):
 
   skip_till(f, 2, r'^Name\s+Titles\n----\s+-----')
@@ -212,7 +216,7 @@ def parse_people(f, rtype, prole):
   role_pat = re.compile(r'''
     (?:\s\s (?P<notes> \([^)]+\) (?:\s\([^)]+\))? ) )?
     (?:\s\s\[(?P<character>[^\]]+)\])?
-    (?:\s\s<(?P<rank>\d+)>)?
+    (?:\s\s<(?P<ranks>[^>]+)>)?
     $
   ''', re.X)
 
@@ -229,8 +233,8 @@ def parse_people(f, rtype, prole):
             role['notes'] = note
         if m.group('character'):
           role['character'] = m.group('character')
-        if m.group('rank'):
-          role['rank'] = int(m.group('rank'))
+        if m.group('ranks'):
+          role['ranks'] = list(map(int, m.group('ranks').split(',')))
       else:
         print('bad-role', v, file=sys.stderr)
     return role
@@ -279,7 +283,7 @@ def mix_name(name, rtype, obj):
     name['roles'] = roles
   if rtype in (
     'actresses', 'actors', 'cinematographers', 'composers', 'directors',
-    'costume-designers', 'editors', 'producers'
+    'costume-designers', 'editors', 'producers', 'writers'
   ):
     roles.extend(obj)
 
