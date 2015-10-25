@@ -20,7 +20,7 @@ FILES = {
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
-    'genres', 'technical'
+    'genres', 'technical', 'aka-titles'
   ],
 }
 
@@ -179,7 +179,7 @@ def parse_technical(f):
   skip_till(f, 2, r'^TECHNICAL LIST\n={8}')
 
   for l in f:
-    l = [l for l in l.split('\t') if l]
+    l = [i for i in l.split('\t') if i]
     typ, val = l[1].split(':', 1)
     typ = {
       'RAT': 'ratios', 'CAM': 'cameras', 'MET': 'lengths',
@@ -190,6 +190,29 @@ def parse_technical(f):
     if len(l) > 2:
       val['note'] = l[2]
     yield l[0], 'technical', (typ, val)
+
+@imdb_parser
+def parse_aka_titles(f):
+
+  skip_till(f, 2, r'^AKA TITLES LIST\n={8}')
+
+  id, akas = None, []
+  for l in f:
+    if l.startswith(' '):
+      l = [i for i in l.split('\t') if i]
+      if not l[0].startswith('   (aka ') or not l[0].endswith(')'):
+        print('bad-aka-title', l)
+        continue
+      aka = {'name': l[0][8:-1]} # TODO extract yr, etc
+      if len(l) > 1:
+        aka['note'] = l[1] # TODO extract country
+      akas.append(aka)
+    else:
+      if akas:
+        yield id, 'aka-titles', akas
+      id, akas = l, []
+  if akas:
+    yield id, 'aka-titles', akas
 
 @imdb_parser
 def parse_actresses(f):
@@ -232,7 +255,7 @@ def parse_people(f, rtype, prole):
   skip_till(f, 2, r'^Name\s+Titles\n----\s+-----')
 
   role_pat = re.compile(r'''
-    (?:\s\s (?P<notes> \([^)]+\) (?:\s\([^)]+\))? ) )?
+    (?:\s\s (?P<note> \([^)]+\) (?:\s\([^)]+\))? ) )?
     (?:\s\s\[(?P<character>[^\]]+)\])?
     (?:\s\s<(?P<ranks>[^>]+)>)?
     $
@@ -244,11 +267,11 @@ def parse_people(f, rtype, prole):
     if len(v) > 1:
       m = role_pat.search('  ' + v[1])
       if m:
-        if m.group('notes'):
-          # XXX more processing here needed
-          note = m.group('notes').replace('(%s)' % prole, '').strip()
+        if m.group('note'):
+          # TODO more processing here needed
+          note = m.group('note').replace('(%s)' % prole, '').strip()
           if note:
-            role['notes'] = note
+            role['note'] = note
         if m.group('character'):
           role['character'] = m.group('character')
         if m.group('ranks'):
@@ -314,6 +337,8 @@ def mix_title(title, rtype, obj):
       title[rtype] = [obj]
   elif rtype == 'technical':
     title['technical'][obj[0]].append(obj[1])
+  elif rtype == 'aka-titles':
+    title['akas'] = obj
 
 def mix_name(name, rtype, obj):
   if rtype in (
@@ -345,6 +370,9 @@ def finalize_title(title):
     kg = title.get(t)
     if kg:
       title[t].sort(key=str.lower)
+
+  if 'akas' in title:
+    title['akas'].sort(key=lambda x: x['name'].lower())
 
 def finalize_name(name):
   if 'roles' in name:
