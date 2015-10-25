@@ -14,7 +14,10 @@ import re
 import sys
 
 FILES = {
-  'name': ['actors', 'actresses', 'cinematographers'],
+  'name': [
+    'actors', 'actresses', 'cinematographers', 'composers', 'directors',
+    'costume-designers', 'editors', 'producers'
+  ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres'
@@ -29,17 +32,18 @@ def imdb_parser(fn):
       yield from fn(filter(bool, (l.rstrip() for l in f)))
   return _fn
 
-def skip_till(f, mark):
-  deq = collections.deque(maxlen=len(mark))
+def skip_till(f, window, pat):
+  pat = re.compile(pat)
+  deq = collections.deque(maxlen=window)
   for l in f:
     deq.append(l)
-    if list(deq) == mark:
+    if pat.search('\n'.join(deq)):
       break
 
 @imdb_parser
 def parse_movies(f):
 
-  skip_till(f, ['MOVIES LIST', '==========='])
+  skip_till(f, 2, r'^MOVIES LIST\n={8}')
 
   for l in f:
     if l.startswith('--------------'):
@@ -51,7 +55,7 @@ def parse_movies(f):
 @imdb_parser
 def parse_taglines(f):
 
-  skip_till(f, ['TAG LINES LIST', '=============='])
+  skip_till(f, 2, r'^TAG LINES LIST\n={8}')
 
   id, tags = None, []
   for l in f:
@@ -70,7 +74,7 @@ def parse_taglines(f):
 @imdb_parser
 def parse_trivia(f):
 
-  skip_till(f, ['FILM TRIVIA', '==========='])
+  skip_till(f, 2, r'^FILM TRIVIA\n={8}')
 
   id, trivia, lines = None, [], []
   for l in f:
@@ -95,7 +99,7 @@ def parse_trivia(f):
 @imdb_parser
 def parse_running_times(f):
 
-  skip_till(f, ['RUNNING TIMES LIST', '=================='])
+  skip_till(f, 2, r'^RUNNING TIMES LIST\n={8}')
 
   rt_pat = re.compile(r'''
     ^(?:(?P<country>[^:]+):)? # optional country
@@ -154,7 +158,7 @@ def parse_running_times(f):
 @imdb_parser
 def parse_keywords(f):
 
-  skip_till(f, ['8: THE KEYWORDS LIST', '===================='])
+  skip_till(f, 2, r'^8: THE KEYWORDS LIST\n={8}')
 
   for l in f:
     l = l.split('\t')
@@ -163,7 +167,7 @@ def parse_keywords(f):
 @imdb_parser
 def parse_genres(f):
 
-  skip_till(f, ['8: THE GENRES LIST', '=================='])
+  skip_till(f, 2, r'^8: THE GENRES LIST\n={8}')
 
   for l in f:
     l = l.split('\t')
@@ -181,27 +185,54 @@ def parse_actors(f):
 def parse_cinematographers(f):
   yield from parse_people(f, 'cinematographers', 'cinematographer')
 
+@imdb_parser
+def parse_composers(f):
+  yield from parse_people(f, 'composers', 'composer')
+
+@imdb_parser
+def parse_directors(f):
+  yield from parse_people(f, 'directors', 'director')
+
+@imdb_parser
+def parse_costume_designers(f):
+  yield from parse_people(f, 'costume-designers', 'costume-designer')
+
+@imdb_parser
+def parse_editors(f):
+  yield from parse_people(f, 'editors', 'editor')
+
+@imdb_parser
+def parse_producers(f):
+  yield from parse_people(f, 'producers', 'producer')
+
 def parse_people(f, rtype, prole):
 
-  skip_till(f, ['Name\t\t\tTitles', '----\t\t\t------'])
+  skip_till(f, 2, r'^Name\s+Titles\n----\s+-----')
 
   role_pat = re.compile(r'''
-    ^(?P<title>.+?)
-    (?:\s\s\((?P<note>[^)]+)\))?
-    (?:\s\s\[(?P<as>[^\]]+)\])?
+    (?:\s\s (?P<notes> \([^)]+\) (?:\s\([^)]+\))? ) )?
+    (?:\s\s\[(?P<character>[^\]]+)\])?
     (?:\s\s<(?P<rank>\d+)>)?
     $
   ''', re.X)
 
   def get_role(v):
-    m = role_pat.match(v)
-    role = {'title': m.group('title'), 'role': prole}
-    if m.group('note') is not None:
-      role['note'] = m.group('note')
-    if m.group('as') is not None:
-      role['as'] = m.group('as')
-    if m.group('rank') is not None:
-      role['rank'] = int(m.group('rank'))
+    v = v.split('  ', 1)
+    role = {'title': v[0], 'role': prole}
+    if len(v) > 1:
+      m = role_pat.search('  ' + v[1])
+      if m:
+        if m.group('notes'):
+          # XXX more processing here needed
+          note = m.group('notes').replace('(%s)' % prole, '').strip()
+          if note:
+            role['notes'] = note
+        if m.group('character'):
+          role['character'] = m.group('character')
+        if m.group('rank'):
+          role['rank'] = int(m.group('rank'))
+      else:
+        print('bad-role', v, file=sys.stderr)
     return role
 
   id, roles = None, []
@@ -246,7 +277,10 @@ def mix_name(name, rtype, obj):
   if roles is None:
     roles = []
     name['roles'] = roles
-  if rtype in ('actresses', 'actors', 'cinematographers'):
+  if rtype in (
+    'actresses', 'actors', 'cinematographers', 'composers', 'directors',
+    'costume-designers', 'editors', 'producers'
+  ):
     roles.extend(obj)
 
 def finalize_title(title):
