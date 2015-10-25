@@ -14,7 +14,7 @@ import re
 import sys
 
 FILES = {
-  'name': ['actors', 'biographies'],
+  'name': ['actors', 'actresses', 'cinematographers'],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres'
@@ -35,12 +35,6 @@ def skip_till(f, mark):
     deq.append(l)
     if list(deq) == mark:
       break
-
-def json_def(o):
-  if isinstance(o, set):
-    return list(sorted(o, key=lambda x: x.lower()))
-  else:
-    raise TypeError()
 
 @imdb_parser
 def parse_movies(f):
@@ -175,6 +169,56 @@ def parse_genres(f):
     l = l.split('\t')
     yield l[0], 'genres', l[-1].strip()
 
+@imdb_parser
+def parse_actresses(f):
+  yield from parse_people(f, 'actresses', 'actor')
+
+@imdb_parser
+def parse_actors(f):
+  yield from parse_people(f, 'actors', 'actor')
+
+@imdb_parser
+def parse_cinematographers(f):
+  yield from parse_people(f, 'cinematographers', 'cinematographer')
+
+def parse_people(f, rtype, prole):
+
+  skip_till(f, ['Name\t\t\tTitles', '----\t\t\t------'])
+
+  role_pat = re.compile(r'''
+    ^(?P<title>.+?)
+    (?:\s\s\((?P<note>[^)]+)\))?
+    (?:\s\s\[(?P<as>[^\]]+)\])?
+    (?:\s\s<(?P<rank>\d+)>)?
+    $
+  ''', re.X)
+
+  def get_role(v):
+    m = role_pat.match(v)
+    role = {'title': m.group('title'), 'role': prole}
+    if m.group('note') is not None:
+      role['note'] = m.group('note')
+    if m.group('as') is not None:
+      role['as'] = m.group('as')
+    if m.group('rank') is not None:
+      role['rank'] = int(m.group('rank'))
+    return role
+
+  id, roles = None, []
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = l.split('\t')
+    if l[0]:
+      if roles:
+        yield id, rtype, roles
+      id, roles = l[0], [get_role(l[-1])]
+    else:
+      roles.append(get_role(l[-1]))
+
+  if roles:
+    yield id, rtype, roles
+
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
     pass # TODO
@@ -190,21 +234,29 @@ def mix_title(title, rtype, obj):
       runtimes.append(obj)
     else:
       title['runtimes'] = [obj]
-  elif rtype == 'keywords':
-    keywords = title.get('keywords')
-    if keywords:
-      keywords.add(obj)
+  elif rtype in ('keywords', 'genres'):
+    kg = title.get(rtype)
+    if kg:
+      kg.append(obj)
     else:
-      title['keywords'] = set([obj])
-  elif rtype == 'genres':
-    genres = title.get('genres')
-    if genres:
-      genres.add(obj)
-    else:
-      title['genres'] = set([obj])
+      title[rtype] = [obj]
 
 def mix_name(name, rtype, obj):
-  pass
+  roles = name.get('roles')
+  if roles is None:
+    roles = []
+    name['roles'] = roles
+  if rtype in ('actresses', 'actors', 'cinematographers'):
+    roles.extend(obj)
+
+def finalize_title(title):
+  for t in ('keywords', 'genres'):
+    kg = title.get(t)
+    if kg:
+      title[t].sort()
+
+def finalize_name(name):
+  name['roles'].sort(key=lambda x: (x['title'], x['role']))
 
 def main():
   "Run main program."
@@ -232,6 +284,7 @@ def main():
 
   args = parser.parse_args()
   mixer = globals()['mix_' + args.kind]
+  finalizer = globals()['finalize_' + args.kind]
 
   parsers = [globals()['parse_' + f.replace('-', '_')](
       os.path.join(args.dir, f + '.list.gz')
@@ -255,10 +308,8 @@ def main():
     rec = {'#': id}
     for _, rtype, obj in tuples:
       mixer(rec, rtype, obj)
-    json.dump(
-      rec, sys.stdout, separators=(',', ':'), sort_keys=True,
-      default=json_def
-    )
+    finalizer(rec)
+    json.dump(rec, sys.stdout, separators=(',', ':'), sort_keys=True)
 
     if args.line:
       print()
