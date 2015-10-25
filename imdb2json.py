@@ -16,7 +16,7 @@ import sys
 FILES = {
   'name': [
     'actors', 'actresses', 'cinematographers', 'composers', 'directors',
-    'costume-designers', 'editors', 'producers', 'writers'
+    'costume-designers', 'editors', 'producers', 'writers', 'aka-names'
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
@@ -272,6 +272,25 @@ def parse_people(f, rtype, prole):
   if roles:
     yield id, rtype, roles
 
+@imdb_parser
+def parse_aka_names(f):
+
+  skip_till(f, 2, r'^AKA NAMES LIST\n={8}')
+
+  id, akas = None, []
+  for l in f:
+    if l.startswith(' '):
+      if not l.startswith('   (aka ') or not l.endswith(')'):
+        print('bad-aka-name', l)
+        continue
+      akas.append(l[8:-1])
+    else:
+      if akas:
+        yield id, 'aka-names', akas
+      id, akas = l, []
+  if akas:
+    yield id, 'aka-names', akas
+
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
     pass # TODO
@@ -297,15 +316,17 @@ def mix_title(title, rtype, obj):
     title['technical'][obj[0]].append(obj[1])
 
 def mix_name(name, rtype, obj):
-  roles = name.get('roles')
-  if roles is None:
-    roles = []
-    name['roles'] = roles
   if rtype in (
     'actresses', 'actors', 'cinematographers', 'composers', 'directors',
     'costume-designers', 'editors', 'producers', 'writers'
   ):
+    roles = name.get('roles')
+    if roles is None:
+      roles = []
+      name['roles'] = roles
     roles.extend(obj)
+  elif rtype == 'aka-names':
+    name['akas'] = obj
 
 def init_title(title):
   title['technical'] = collections.defaultdict(list)
@@ -326,7 +347,10 @@ def finalize_title(title):
       title[t].sort(key=str.lower)
 
 def finalize_name(name):
-  name['roles'].sort(key=lambda x: (x['title'].lower(), x['role']))
+  if 'roles' in name:
+    name['roles'].sort(key=lambda x: (x['title'].lower(), x['role']))
+  if 'akas' in name:
+    name['akas'].sort(key=str.lower)
 
 def main():
   "Run main program."
