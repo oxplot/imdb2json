@@ -20,7 +20,7 @@ FILES = {
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
-    'genres'
+    'genres', 'technical'
   ],
 }
 
@@ -174,6 +174,24 @@ def parse_genres(f):
     yield l[0], 'genres', l[-1].strip()
 
 @imdb_parser
+def parse_technical(f):
+
+  skip_till(f, 2, r'^TECHNICAL LIST\n={8}')
+
+  for l in f:
+    l = [l for l in l.split('\t') if l]
+    typ, val = l[1].split(':', 1)
+    typ = {
+      'RAT': 'ratios', 'CAM': 'cameras', 'MET': 'lengths',
+      'PCS': 'processes', 'LAB': 'lab', 'OFM': 'negatives',
+      'PFM': 'prints'
+    }[typ]
+    val = {'name': val}
+    if len(l) > 2:
+      val['note'] = l[2]
+    yield l[0], 'technical', (typ, val)
+
+@imdb_parser
 def parse_actresses(f):
   yield from parse_people(f, 'actresses', 'actor')
 
@@ -275,6 +293,8 @@ def mix_title(title, rtype, obj):
       kg.append(obj)
     else:
       title[rtype] = [obj]
+  elif rtype == 'technical':
+    title['technical'][obj[0]].append(obj[1])
 
 def mix_name(name, rtype, obj):
   roles = name.get('roles')
@@ -287,14 +307,26 @@ def mix_name(name, rtype, obj):
   ):
     roles.extend(obj)
 
+def init_title(title):
+  title['technical'] = collections.defaultdict(list)
+
+def init_name(title):
+  pass
+
 def finalize_title(title):
+
+  for v in title['technical'].values():
+    v.sort(key=lambda x: x['name'])
+  title.update(title['technical'])
+  del title['technical']
+
   for t in ('keywords', 'genres'):
     kg = title.get(t)
     if kg:
-      title[t].sort()
+      title[t].sort(key=str.lower)
 
 def finalize_name(name):
-  name['roles'].sort(key=lambda x: (x['title'], x['role']))
+  name['roles'].sort(key=lambda x: (x['title'].lower(), x['role']))
 
 def main():
   "Run main program."
@@ -322,6 +354,7 @@ def main():
 
   args = parser.parse_args()
   mixer = globals()['mix_' + args.kind]
+  initer = globals()['init_' + args.kind]
   finalizer = globals()['finalize_' + args.kind]
 
   parsers = [globals()['parse_' + f.replace('-', '_')](
@@ -344,6 +377,7 @@ def main():
         print(',')
 
     rec = {'#': id}
+    initer(rec)
     for _, rtype, obj in tuples:
       mixer(rec, rtype, obj)
     finalizer(rec)
