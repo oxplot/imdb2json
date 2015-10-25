@@ -16,7 +16,8 @@ import sys
 FILES = {
   'name': [
     'actors', 'actresses', 'cinematographers', 'composers', 'directors',
-    'costume-designers', 'editors', 'producers', 'writers', 'aka-names'
+    'costume-designers', 'editors', 'producers', 'writers', 'aka-names',
+    'biographies'
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
@@ -327,6 +328,35 @@ def parse_aka_names(f):
   if akas:
     yield id, 'aka-names', akas
 
+@imdb_parser
+def parse_biographies(f):
+
+  skip_till(f, 2, r'^BIOGRAPHY LIST\n={8}')
+
+  def build_bio(b):
+    bio = {}
+    b['BG'] = ' '.join(i if i else '\n' for i in b['BG'])
+    b['BG'] = b['BG'].replace(' \n ', '\n').strip()
+    if b['BG']:
+      bio['biography'] = b['BG']
+    # TODO parse the rest of the types
+    return bio
+
+  id, bio = None, collections.defaultdict(list)
+  for l in f:
+    if l.startswith('-------'):
+      if bio and id:
+        yield id, 'biographies', build_bio(bio)
+      id, bio = None, collections.defaultdict(list)
+    else:
+      l = l.split(':', 1)
+      if l[0] == 'NM':
+        id = l[1][1:]
+      else:
+        bio[l[0]].append(l[1][1:])
+  if bio and id:
+    yield id, 'biographies', build_bio(bio)
+
 def mix_title(title, rtype, obj):
   if 'cat' not in title:
     pass # TODO
@@ -367,6 +397,8 @@ def mix_name(name, rtype, obj):
     roles.extend(obj)
   elif rtype == 'aka-names':
     name['akas'] = obj
+  elif rtype == 'biographies':
+    name['bio'] = obj
 
 def init_title(title):
   title['technical'] = collections.defaultdict(list)
@@ -394,6 +426,8 @@ def finalize_name(name):
     name['roles'].sort(key=lambda x: (x['title'].lower(), x['role']))
   if 'akas' in name:
     name['akas'].sort(key=str.lower)
+  name.update(name['bio'])
+  del name['bio']
 
 def main():
   "Run main program."
