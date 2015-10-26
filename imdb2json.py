@@ -22,7 +22,7 @@ FILES = {
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
-    'certificates', 'color-info'
+    'certificates', 'color-info', 'countries'
   ],
 }
 
@@ -259,6 +259,17 @@ def parse_color_info(f):
     yield l[0], 'color-info', info
 
 @imdb_parser
+def parse_countries(f):
+
+  skip_till(f, 2, r'^COUNTRIES LIST\n={8}')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = l.split('\t')
+    yield l[0], 'countries', l[-1]
+
+@imdb_parser
 def parse_actresses(f):
   yield from parse_people(f, 'actresses', 'actor')
 
@@ -439,7 +450,9 @@ def mix_title(title, rtype, obj):
       runtimes.append(obj)
     else:
       title['runtimes'] = [obj]
-  elif rtype in ('keywords', 'genres', 'certificates', 'color-info'):
+  elif rtype in (
+    'keywords', 'genres', 'certificates', 'color-info', 'countries'
+  ):
     coll = title.get(rtype)
     if coll:
       coll.append(obj)
