@@ -22,7 +22,7 @@ FILES = {
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
-    'certificates'
+    'certificates', 'color-info'
   ],
 }
 
@@ -245,6 +245,20 @@ def parse_certificates(f):
     yield l[0], 'certificates', cert
 
 @imdb_parser
+def parse_color_info(f):
+
+  skip_till(f, 2, r'^COLOR INFO LIST\n={8}')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+    info = {'color': l[1].lower()}
+    if len(l) > 2:
+      info['note'] = l[2] # TODO parse the data into sep fields
+    yield l[0], 'color-info', info
+
+@imdb_parser
 def parse_actresses(f):
   yield from parse_people(f, 'actresses', 'actor')
 
@@ -425,22 +439,16 @@ def mix_title(title, rtype, obj):
       runtimes.append(obj)
     else:
       title['runtimes'] = [obj]
-  elif rtype in ('keywords', 'genres'):
-    kg = title.get(rtype)
-    if kg:
-      kg.append(obj)
+  elif rtype in ('keywords', 'genres', 'certificates', 'color-info'):
+    coll = title.get(rtype)
+    if coll:
+      coll.append(obj)
     else:
       title[rtype] = [obj]
   elif rtype == 'technical':
     title['technical'][obj[0]].append(obj[1])
   elif rtype == 'aka-titles':
     title['akas'] = obj
-  elif rtype == 'certificates':
-    certs = title.get('certificates')
-    if certs:
-      certs.append(obj)
-    else:
-      title['certificates'] = [obj]
 
 def mix_name(name, rtype, obj):
   if rtype in (
