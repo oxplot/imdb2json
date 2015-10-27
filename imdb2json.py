@@ -501,8 +501,9 @@ def finalize_name(name):
     name['roles'].sort(key=lambda x: (x['title'].lower(), x['role']))
   if 'akas' in name:
     name['akas'].sort(key=str.lower)
-  name.update(name['bio'])
-  del name['bio']
+  if 'biographies' in name:
+    name.update(name['biographies'])
+    del name['biographies']
 
 def main():
   "Run main program."
