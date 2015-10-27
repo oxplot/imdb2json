@@ -22,7 +22,7 @@ FILES = {
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
-    'certificates', 'color-info', 'countries'
+    'certificates', 'color-info', 'countries', 'crazy-credits'
   ],
 }
 
@@ -86,6 +86,13 @@ def parse_alternate_versions(f):
   skip_till(f, 2, r'^ALTERNATE VERSIONS LIST\n={8}')
 
   yield from parse_bullet_pt(f, 'alternate-versions')
+
+@imdb_parser
+def parse_crazy_credits(f):
+
+  skip_till(f, 2, r'^CRAZY CREDITS\n={8}')
+
+  yield from parse_bullet_pt(f, 'crazy-credits')
 
 def parse_bullet_pt(f, rtype):
 
@@ -437,21 +444,15 @@ def mix_title(title, rtype, obj):
   if 'cat' not in title:
     pass # TODO
   if rtype == 'movies':
-    title['yr'] = obj
-  elif rtype == 'taglines':
-    title['taglines'] = obj
-  elif rtype == 'trivia':
-    title['trivia'] = obj
-  elif rtype == 'alternate-versions':
-    title['alternates'] = obj
-  elif rtype == 'running-times':
-    runtimes = title.get('runtimes')
-    if runtimes:
-      runtimes.append(obj)
-    else:
-      title['runtimes'] = [obj]
+    title['year'] = obj
+  elif rtype in  (
+    'taglines', 'trivia', 'alternate-versions',
+    'crazy-credits'
+  ):
+    title[rtype] = obj
   elif rtype in (
-    'keywords', 'genres', 'certificates', 'color-info', 'countries'
+    'keywords', 'genres', 'certificates', 'color-info', 'countries',
+    'running-times', 'aka-titles'
   ):
     coll = title.get(rtype)
     if coll:
@@ -460,8 +461,6 @@ def mix_title(title, rtype, obj):
       title[rtype] = [obj]
   elif rtype == 'technical':
     title['technical'][obj[0]].append(obj[1])
-  elif rtype == 'aka-titles':
-    title['akas'] = obj
 
 def mix_name(name, rtype, obj):
   if rtype in (
@@ -473,10 +472,8 @@ def mix_name(name, rtype, obj):
       roles = []
       name['roles'] = roles
     roles.extend(obj)
-  elif rtype == 'aka-names':
-    name['akas'] = obj
-  elif rtype == 'biographies':
-    name['bio'] = obj
+  elif rtype in ('aka-names', 'biographies'):
+    name[rtype] = obj
 
 def init_title(title):
   title['technical'] = collections.defaultdict(list)
