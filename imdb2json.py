@@ -27,7 +27,7 @@ FILES = {
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
     'certificates', 'color-info', 'countries', 'crazy-credits',
-    'distributors'
+    'distributors', 'goofs'
   ],
 }
 
@@ -114,6 +114,26 @@ def parse_crazy_credits(f):
   skip_till(f, 2, r'^CRAZY CREDITS\n={8}')
 
   yield from parse_bullet_pt(f, 'crazy-credits')
+
+@imdb_parser
+def parse_goofs(f):
+
+  skip_till(f, 2, r'^GOOFS LIST\n={8}')
+
+  type_map = {
+    'CONT': 'continuity', 'FAKE': 'revealing',
+    'FACT': 'factual', 'GEOG': 'geographical',
+    'PLOT': 'plothole', 'FAIR': 'not_goof',
+    'CREW': 'crew_visible', 'DATE': 'date',
+    'CHAR': 'character', 'SYNC': 'audio_video_sync',
+    'MISC': 'misc', 'BOOM': 'boom_mic_visible'
+  }
+
+  for id, rtype, pts in parse_bullet_pt(f, 'goofs'):
+    yield id, rtype, [{
+      'type': type_map[p[:4]],
+      'text': p[6:]
+    } for p in pts]
 
 def parse_bullet_pt(f, rtype):
 
@@ -464,7 +484,7 @@ def mix_title(title, rtype, obj):
     title['year'] = obj
   elif rtype in  (
     'taglines', 'trivia', 'alternate-versions',
-    'crazy-credits'
+    'crazy-credits', 'goofs'
   ):
     title[rtype] = obj
   elif rtype in (
