@@ -22,7 +22,8 @@ FILES = {
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
-    'certificates', 'color-info', 'countries', 'crazy-credits'
+    'certificates', 'color-info', 'countries', 'crazy-credits',
+    'distributors'
   ],
 }
 
@@ -277,40 +278,36 @@ def parse_countries(f):
     yield l[0], 'countries', l[-1]
 
 @imdb_parser
-def parse_actresses(f):
-  yield from parse_people(f, 'actresses', 'actor')
+def parse_distributors(f):
 
-@imdb_parser
-def parse_actors(f):
-  yield from parse_people(f, 'actors', 'actor')
+  skip_till(f, 2, r'^DISTRIBUTORS LIST\n={8}')
 
-@imdb_parser
-def parse_cinematographers(f):
-  yield from parse_people(f, 'cinematographers', 'cinematographer')
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
 
-@imdb_parser
-def parse_composers(f):
-  yield from parse_people(f, 'composers', 'composer')
+    dist = {'name': l[1]} # TODO parse country out
+    if len(l) > 2:
+      dist['note'] = l[2] # TODO separate fields
+    
+    yield l[0], 'distributors', dist
 
-@imdb_parser
-def parse_directors(f):
-  yield from parse_people(f, 'directors', 'director')
+def person_parser_gen(file_name, role):
+  @imdb_parser
+  def parser(f):
+    yield from parse_people(f, file_name, role)
+  return parser
 
-@imdb_parser
-def parse_costume_designers(f):
-  yield from parse_people(f, 'costume-designers', 'costume-designer')
-
-@imdb_parser
-def parse_editors(f):
-  yield from parse_people(f, 'editors', 'editor')
-
-@imdb_parser
-def parse_producers(f):
-  yield from parse_people(f, 'producers', 'producer')
-
-@imdb_parser
-def parse_writers(f):
-  yield from parse_people(f, 'writers', 'writer')
+for file_name, role in [
+  ('actresses', 'actress'), ('composers', 'composer'),
+  ('actors', 'actor'), ('directors', 'director'),
+  ('cinematographers', 'cinematographer'), ('editors', 'editor'),
+  ('costume-designers', 'costumer-designer'), ('writers', 'writer'),
+  ('producers', 'producer')
+]:
+  globals()['parse_' + file_name.replace('-', '_')] = \
+    person_parser_gen(file_name, role)
 
 def parse_people(f, rtype, prole):
 
@@ -452,7 +449,7 @@ def mix_title(title, rtype, obj):
     title[rtype] = obj
   elif rtype in (
     'keywords', 'genres', 'certificates', 'color-info', 'countries',
-    'running-times', 'aka-titles'
+    'running-times', 'aka-titles', 'distributors'
   ):
     coll = title.get(rtype)
     if coll:
