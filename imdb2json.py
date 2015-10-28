@@ -27,7 +27,7 @@ FILES = {
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
     'certificates', 'color-info', 'countries', 'crazy-credits',
-    'distributors', 'goofs'
+    'distributors', 'goofs', 'language'
   ],
 }
 
@@ -134,6 +134,20 @@ def parse_goofs(f):
       'type': type_map[p[:4]],
       'text': p[6:]
     } for p in pts]
+
+@imdb_parser
+def parse_language(f):
+
+  skip_till(f, 2, r'^LANGUAGE LIST\n={8}')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+    lang = {'name': l[1]}
+    if len(l) > 2:
+      lang['note'] = l[2]
+    yield l[0], 'language', lang
 
 def parse_bullet_pt(f, rtype):
 
@@ -489,7 +503,7 @@ def mix_title(title, rtype, obj):
     title[rtype] = obj
   elif rtype in (
     'keywords', 'genres', 'certificates', 'color-info', 'countries',
-    'running-times', 'aka-titles', 'distributors'
+    'running-times', 'aka-titles', 'distributors', 'language'
   ):
     coll = title.get(rtype)
     if coll:
