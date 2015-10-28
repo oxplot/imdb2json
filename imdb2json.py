@@ -8,10 +8,14 @@ import collections
 import gzip
 import heapq
 import itertools
-import json
 import os
 import re
 import sys
+
+try:
+  import ujson as json
+except ImportError:
+  import json
 
 FILES = {
   'name': [
@@ -26,6 +30,22 @@ FILES = {
     'distributors'
   ],
 }
+
+_out_buf = collections.deque()
+_out_buf_size = 0
+
+def writeout(d):
+  global _out_buf_size
+  _out_buf.append(d)
+  _out_buf_size += len(d)
+  if _out_buf_size > 1000000:
+    flushout()
+
+def flushout():
+  global _out_buf_size
+  sys.stdout.write(''.join(_out_buf))
+  _out_buf.clear()
+  _out_buf_size = 0
 
 def imdb_parser(fn):
   def _fn(path):
@@ -536,7 +556,7 @@ def main():
   ) for f in FILES[args.kind]]
 
   if not args.line:
-    print('[')
+    writeout('[\n')
     first_line = True
   
   for id, tuples in itertools.groupby(
@@ -548,20 +568,22 @@ def main():
       if first_line:
         first_line = False
       else:
-        print(',')
+        writeout(',\n')
 
     rec = {'#': id}
     initer(rec)
     for _, rtype, obj in tuples:
       mixer(rec, rtype, obj)
     finalizer(rec)
-    json.dump(rec, sys.stdout, separators=(',', ':'), sort_keys=True)
+    writeout(json.dumps(rec))
 
     if args.line:
-      print()
+      writeout('\n')
 
   if not args.line:
-    print('\n]')
+    writeout('\n]\n')
+
+  flushout()
 
 if __name__ == '__main__':
   main()
