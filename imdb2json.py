@@ -21,7 +21,7 @@ FILES = {
   'name': [
     'actors', 'actresses', 'cinematographers', 'composers', 'directors',
     'costume-designers', 'editors', 'producers', 'writers', 'aka-names',
-    'biographies', 'miscellaneous'
+    'biographies', 'miscellaneous', 'production-designers'
   ],
   'title': [
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
@@ -465,7 +465,8 @@ for file_name, role in [
   ('actors', 'actor'), ('directors', 'director'),
   ('cinematographers', 'cinematographer'), ('editors', 'editor'),
   ('costume-designers', 'costumer-designer'), ('writers', 'writer'),
-  ('producers', 'producer'), ('miscellaneous', 'miscellaneous')
+  ('producers', 'producer'), ('miscellaneous', 'miscellaneous'),
+  ('production-designers', 'production-designer')
 ]:
   globals()['parse_' + file_name.replace('-', '_')] = \
     person_parser_gen(file_name, role)
@@ -634,7 +635,7 @@ def mix_name(name, rtype, obj):
   if rtype in (
     'actresses', 'actors', 'cinematographers', 'composers', 'directors',
     'costume-designers', 'editors', 'producers', 'writers',
-    'miscellaneous'
+    'miscellaneous', 'production-designers'
   ):
     roles = name.get('roles')
     if roles is None:
