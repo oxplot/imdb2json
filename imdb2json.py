@@ -27,7 +27,9 @@ FILES = {
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
     'certificates', 'color-info', 'countries', 'crazy-credits',
-    'distributors', 'goofs', 'language', 'literature', 'locations'
+    'distributors', 'goofs', 'language', 'literature', 'locations',
+    'miscellaneous-companies', 'special-effects-companies',
+    'production-companies'
   ],
 }
 
@@ -390,6 +392,41 @@ def parse_locations(f):
       loc['note'] = l[2]
     yield l[0], 'locations', loc
 
+def parse_companies(f, rtype, type):
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+    comp = {'name': l[1], 'type': type}
+    if len(l) > 2:
+      comp['note'] = l[2]
+    yield l[0], rtype, comp
+
+@imdb_parser
+def parse_miscellaneous_companies(f):
+
+  skip_till(f, 2, r'^MISCELLANEOUS COMPANIES LIST\n={8}')
+
+  yield from parse_companies(
+    f, 'miscellaneous-companies', 'miscellaneous')
+
+@imdb_parser
+def parse_production_companies(f):
+
+  skip_till(f, 2, r'^PRODUCTION COMPANIES LIST\n={8}')
+
+  yield from parse_companies(
+    f, 'production-companies', 'production')
+
+@imdb_parser
+def parse_special_effects_companies(f):
+
+  skip_till(f, 2, r'^SPECIAL EFFECTS COMPANIES LIST\n={8}')
+
+  yield from parse_companies(
+    f, 'special-effects-companies', 'special_effects')
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -556,6 +593,15 @@ def mix_title(title, rtype, obj):
       title[rtype] = [obj]
   elif rtype == 'technical':
     title['technical'][obj[0]].append(obj[1])
+  elif rtype in (
+    'miscellaneous-companies', 'special-effects-companies',
+    'production-companies'
+  ):
+    companies = title.get('companies')
+    if companies is None:
+      companies = []
+      title['companies'] = companies
+    companies.append(obj)
 
 def mix_name(name, rtype, obj):
   if rtype in (
@@ -595,6 +641,9 @@ def finalize_title(title):
 
   if 'akas' in title:
     title['akas'].sort(key=lambda x: x['name'].lower())
+
+  if 'companies' in title:
+    title['companies'].sort(key=lambda x: (x['name'].lower(), x['type']))
 
 def finalize_name(name):
   if 'roles' in name:
