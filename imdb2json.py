@@ -30,7 +30,7 @@ FILES = {
     'distributors', 'goofs', 'language', 'literature', 'locations',
     'miscellaneous-companies', 'special-effects-companies',
     'production-companies', 'movie-links', 'mpaa-ratings-reasons',
-    'ratings'
+    'ratings', 'release-dates'
   ],
 }
 
@@ -489,6 +489,21 @@ def parse_ratings(f):
       'distribution': m.group(1)
     }
 
+@imdb_parser
+def parse_release_dates(f):
+
+  skip_till(f, 2, r'^RELEASE DATES LIST\n={8}')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+    p2 = l[1].split(':', 1)
+    rd = {'country': p2[0], 'date': p2[1]} # TODO parse date
+    if len(l) > 2:
+      rd['note'] = l[2]
+    yield l[0], 'release-dates', rd
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -648,7 +663,7 @@ def mix_title(title, rtype, obj):
   elif rtype in (
     'keywords', 'genres', 'certificates', 'color-info', 'countries',
     'running-times', 'aka-titles', 'distributors', 'language',
-    'locations'
+    'locations', 'release-dates'
   ):
     coll = title.get(rtype)
     if coll:
