@@ -30,7 +30,7 @@ FILES = {
     'distributors', 'goofs', 'language', 'literature', 'locations',
     'miscellaneous-companies', 'special-effects-companies',
     'production-companies', 'movie-links', 'mpaa-ratings-reasons',
-    'ratings', 'release-dates'
+    'ratings', 'release-dates', 'sound-mix'
   ],
 }
 
@@ -504,6 +504,20 @@ def parse_release_dates(f):
       rd['note'] = l[2]
     yield l[0], 'release-dates', rd
 
+@imdb_parser
+def parse_sound_mix(f):
+
+  skip_till(f, 2, r'^SOUND-MIX LIST\n={8}')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+    mix = {'type': l[1].lower()}
+    if len(l) > 2:
+      mix['note'] = l[2]
+    yield l[0], 'sound-mix', mix
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -663,7 +677,7 @@ def mix_title(title, rtype, obj):
   elif rtype in (
     'keywords', 'genres', 'certificates', 'color-info', 'countries',
     'running-times', 'aka-titles', 'distributors', 'language',
-    'locations', 'release-dates'
+    'locations', 'release-dates', 'sound-mix'
   ):
     coll = title.get(rtype)
     if coll:
