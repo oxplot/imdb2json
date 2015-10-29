@@ -27,7 +27,7 @@ FILES = {
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
     'certificates', 'color-info', 'countries', 'crazy-credits',
-    'distributors', 'goofs', 'language'
+    'distributors', 'goofs', 'language', 'literature'
   ],
 }
 
@@ -347,6 +347,35 @@ def parse_distributors(f):
     
     yield l[0], 'distributors', dist
 
+@imdb_parser
+def parse_literature(f):
+
+  skip_till(f, 2, r'^LITERATURE LIST\n={8}')
+
+  typ_map = {
+    'ADPT': 'adaptations', 'BOOK': 'books', 'NOVL': 'novels',
+    'ESSY': 'essays', 'CRIT': 'printed_reviews',
+    'OTHR': 'other_literature',
+    'IVIW': 'interviews', 'SCRP': 'screenplays',
+    'PROT': 'production_process_protocols'
+  }
+
+  id, lits = None, collections.defaultdict(list)
+
+  for l in f:
+    if l.startswith('--------------'):
+      if id:
+        yield id, 'literature', lits
+      id, lits = None, collections.defaultdict(list)
+
+    elif l.startswith('MOVI:'):
+      id = l[6:]
+    else:
+      lits[typ_map[l[:4]]].append(l[6:]) # TODO parse details
+
+  if id:
+    yield id, 'literature', lits
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -498,7 +527,7 @@ def mix_title(title, rtype, obj):
     title['year'] = obj
   elif rtype in  (
     'taglines', 'trivia', 'alternate-versions',
-    'crazy-credits', 'goofs'
+    'crazy-credits', 'goofs', 'literature'
   ):
     title[rtype] = obj
   elif rtype in (
@@ -538,6 +567,10 @@ def finalize_title(title):
     v.sort(key=lambda x: x['name'])
   title.update(title['technical'])
   del title['technical']
+
+  if 'literature' in title:
+    title.update(title['literature'])
+    del title['literature']
 
   for t in ('keywords', 'genres'):
     kg = title.get(t)
