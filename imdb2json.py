@@ -29,7 +29,8 @@ FILES = {
     'certificates', 'color-info', 'countries', 'crazy-credits',
     'distributors', 'goofs', 'language', 'literature', 'locations',
     'miscellaneous-companies', 'special-effects-companies',
-    'production-companies', 'movie-links', 'mpaa-ratings-reasons'
+    'production-companies', 'movie-links', 'mpaa-ratings-reasons',
+    'ratings'
   ],
 }
 
@@ -472,6 +473,22 @@ def parse_mpaa_ratings_reasons(f):
   if id and reason:
     yield id, 'mpaa-ratings-reasons', ' '.join(reason)
 
+@imdb_parser
+def parse_ratings(f):
+
+  skip_till(f, 2, r'^MOVIE RATINGS REPORT\nNew\s+Distri')
+
+  pat = re.compile(r'^\s+([^\s]+)\s+(\d+)\s+([\d.]+)\s+(.*)$')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    m = pat.match(l)
+    yield m.group(4), 'ratings', {
+      'rank': float(m.group(3)), 'votes': int(m.group(2)),
+      'distribution': m.group(1)
+    }
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -625,7 +642,7 @@ def mix_title(title, rtype, obj):
   elif rtype in  (
     'taglines', 'trivia', 'alternate-versions',
     'crazy-credits', 'goofs', 'literature', 'movie-links',
-    'mpaa-ratings-reasons'
+    'mpaa-ratings-reasons', 'ratings'
   ):
     title[rtype] = obj
   elif rtype in (
