@@ -17,6 +17,10 @@ try:
 except ImportError:
   import json
 
+sys.stdout = open(
+  sys.stdout.fileno(), 'w', encoding='utf8', buffering=1000000
+)
+
 FILES = {
   'name': [
     'actors', 'actresses', 'cinematographers', 'composers', 'directors',
@@ -33,22 +37,6 @@ FILES = {
     'ratings', 'release-dates', 'sound-mix'
   ],
 }
-
-_out_buf = collections.deque()
-_out_buf_size = 0
-
-def writeout(d):
-  global _out_buf_size
-  _out_buf.append(d)
-  _out_buf_size += len(d)
-  if _out_buf_size > 1000000:
-    flushout()
-
-def flushout():
-  global _out_buf_size
-  sys.stdout.write(''.join(_out_buf))
-  _out_buf.clear()
-  _out_buf_size = 0
 
 def imdb_parser(fn):
   def _fn(path):
@@ -781,7 +769,7 @@ def main():
   ) for f in FILES[args.kind]]
 
   if not args.line:
-    writeout('[\n')
+    print('[')
     first_line = True
   
   for id, tuples in itertools.groupby(
@@ -793,22 +781,22 @@ def main():
       if first_line:
         first_line = False
       else:
-        writeout(',\n')
+        print(',')
 
     rec = {'#': id}
     initer(rec)
     for _, rtype, obj in tuples:
       mixer(rec, rtype, obj)
     finalizer(rec)
-    writeout(json.dumps(rec))
+    print(json.dumps(rec), end='')
 
     if args.line:
-      writeout('\n')
+      print()
 
   if not args.line:
-    writeout('\n]\n')
+    print('\n]')
 
-  flushout()
+  print(end='', flush=True)
 
 if __name__ == '__main__':
   main()
