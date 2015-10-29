@@ -29,7 +29,7 @@ FILES = {
     'certificates', 'color-info', 'countries', 'crazy-credits',
     'distributors', 'goofs', 'language', 'literature', 'locations',
     'miscellaneous-companies', 'special-effects-companies',
-    'production-companies'
+    'production-companies', 'movie-links'
   ],
 }
 
@@ -427,6 +427,33 @@ def parse_special_effects_companies(f):
   yield from parse_companies(
     f, 'special-effects-companies', 'special_effects')
 
+@imdb_parser
+def parse_movie_links(f):
+
+  skip_till(f, 2, r'^MOVIE LINKS LIST\n={8}')
+
+  rel_map = {
+    '  (follows ': 'follows',
+    '  (followed by ': 'followed_by',
+    '  (version of ': 'alt_version',
+    '  (alternate language version of ': 'alt_language'
+  }
+
+  id, links = None, []
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    for relf, relt in rel_map.items():
+      if l.startswith(relf):
+        links.append({'title': l[len(relf):-1], 'rel': relt})
+        break
+    else:
+      if id:
+        yield id, 'movie-links', links
+      id, links = l, []
+  if id:
+    yield id, 'movie-links', links
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -578,7 +605,7 @@ def mix_title(title, rtype, obj):
     title['year'] = obj
   elif rtype in  (
     'taglines', 'trivia', 'alternate-versions',
-    'crazy-credits', 'goofs', 'literature'
+    'crazy-credits', 'goofs', 'literature', 'movie-links'
   ):
     title[rtype] = obj
   elif rtype in (
