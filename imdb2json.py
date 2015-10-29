@@ -27,7 +27,7 @@ FILES = {
     'movies', 'taglines', 'trivia', 'running-times', 'keywords',
     'genres', 'technical', 'aka-titles', 'alternate-versions',
     'certificates', 'color-info', 'countries', 'crazy-credits',
-    'distributors', 'goofs', 'language', 'literature'
+    'distributors', 'goofs', 'language', 'literature', 'locations'
   ],
 }
 
@@ -376,6 +376,20 @@ def parse_literature(f):
   if id:
     yield id, 'literature', lits
 
+@imdb_parser
+def parse_locations(f):
+
+  skip_till(f, 2, r'^LOCATIONS LIST\n={8}')
+
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    l = [i for i in l.split('\t') if i]
+    loc = {'name': l[1]}
+    if len(l) > 2:
+      loc['note'] = l[2]
+    yield l[0], 'locations', loc
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -532,7 +546,8 @@ def mix_title(title, rtype, obj):
     title[rtype] = obj
   elif rtype in (
     'keywords', 'genres', 'certificates', 'color-info', 'countries',
-    'running-times', 'aka-titles', 'distributors', 'language'
+    'running-times', 'aka-titles', 'distributors', 'language',
+    'locations'
   ):
     coll = title.get(rtype)
     if coll:
