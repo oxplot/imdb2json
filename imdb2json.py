@@ -11,15 +11,13 @@ import itertools
 import os
 import re
 import sys
+import tempfile
 
 try:
   import ujson as json
 except ImportError:
   import json
 
-sys.stdout = open(
-  sys.stdout.fileno(), 'w', encoding='utf8', buffering=1000000
-)
 
 FILES = {
   'name': [
@@ -37,6 +35,45 @@ FILES = {
     'ratings', 'release-dates', 'sound-mix'
   ],
 }
+
+_MAX_WRITEOUT_BUF = 1000000
+_MAX_SORT_BUF = 60000
+_MAX_SORT_TEMPS = 100
+
+sys.stdout = open(
+  sys.stdout.fileno(), 'w', encoding='utf8', buffering=_MAX_WRITEOUT_BUF
+)
+
+def rec_sorted_merge(temps):
+  yield from heapq.merge(*[(
+    tuple(json.loads(i.rstrip())) for i in f
+  ) for f in temps])
+
+def rec_sorted(recs):
+  srtd = collections.deque()
+  temps = []
+  for rec in recs:
+    srtd.append(rec)
+    if len(srtd) >= _MAX_SORT_BUF:
+      tmp = tempfile.TemporaryFile(mode='w+', encoding='utf8')
+      tmp.write('\n'.join(json.dumps(sr) for sr in sorted(srtd)))
+      tmp.seek(0)
+      srtd.clear()
+      temps.append(tmp)
+      if len(temps) >= _MAX_SORT_TEMPS:
+        tmp = tempfile.TemporaryFile(
+          mode='w+', encoding='utf8', buffering=_MAX_WRITEOUT_BUF)
+        for r in rec_sorted_merge(temps):
+          tmp.write(json.dumps(r))
+          tmp.write('\n')
+        tmp.seek(0)
+        temps = [tmp]
+  if srtd:
+    tmp = tempfile.TemporaryFile(mode='w+', encoding='utf8')
+    tmp.write('\n'.join(json.dumps(sr) for sr in sorted(srtd)))
+    tmp.seek(0)
+    temps.append(tmp)
+  yield from rec_sorted_merge(temps)
 
 def imdb_parser(fn):
   def _fn(path):
@@ -773,7 +810,7 @@ def main():
     first_line = True
   
   for id, tuples in itertools.groupby(
-    heapq.merge(*parsers, key=lambda x: x[0].lower()),
+    rec_sorted(itertools.chain(*parsers)),
     key=lambda x: x[0]
   ):
 
