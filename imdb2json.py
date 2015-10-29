@@ -29,7 +29,7 @@ FILES = {
     'certificates', 'color-info', 'countries', 'crazy-credits',
     'distributors', 'goofs', 'language', 'literature', 'locations',
     'miscellaneous-companies', 'special-effects-companies',
-    'production-companies', 'movie-links'
+    'production-companies', 'movie-links', 'mpaa-ratings-reasons'
   ],
 }
 
@@ -454,6 +454,24 @@ def parse_movie_links(f):
   if id:
     yield id, 'movie-links', links
 
+@imdb_parser
+def parse_mpaa_ratings_reasons(f):
+
+  skip_till(f, 2, r'^MPAA RATINGS REASONS LIST\n={8}')
+
+  id, reason = None, []
+  for l in f:
+    if l.startswith('--------------'):
+      if id and reason:
+        yield id, 'mpaa-ratings-reasons', ' '.join(reason)
+      id, reason = None, []
+    elif l.startswith('MV: '):
+      id = l[4:]
+    elif l.startswith('RE: '):
+      reason.append(l[4:])
+  if id and reason:
+    yield id, 'mpaa-ratings-reasons', ' '.join(reason)
+
 def person_parser_gen(file_name, role):
   @imdb_parser
   def parser(f):
@@ -606,7 +624,8 @@ def mix_title(title, rtype, obj):
     title['year'] = obj
   elif rtype in  (
     'taglines', 'trivia', 'alternate-versions',
-    'crazy-credits', 'goofs', 'literature', 'movie-links'
+    'crazy-credits', 'goofs', 'literature', 'movie-links',
+    'mpaa-ratings-reasons'
   ):
     title[rtype] = obj
   elif rtype in (
