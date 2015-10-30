@@ -7,6 +7,7 @@ import argparse
 import collections
 import gzip
 import heapq
+import io
 import itertools
 import os
 import re
@@ -20,7 +21,7 @@ except ImportError:
 
 STORE, APPEND = 0, 1
 TITLE, NAME = 'title', 'name'
-imdb_parsers = {TITLE: [], NAME: []}
+imdb_parsers = {TITLE: {}, NAME: {}}
 
 _OUT_BUF = 1000000
 _MAX_SORT_BUF = 100000
@@ -40,15 +41,9 @@ def roundrobin(*iterables):
       pending -= 1
       nexts = itertools.cycle(itertools.islice(nexts, pending))
 
-def rec_sorted_merge(temps):
-  yield from heapq.merge(*[(
-    tuple(json.loads(i.rstrip()))
-    for i in open(f.fileno(), 'r', encoding='utf8')
-  ) for f in temps], key=lambda x: x[0])
-
 def rec_sorted(recs):
   srtd = collections.deque()
-  temps = []
+  temps = collections.deque()
 
   def write_tmp():
     tmp = tempfile.TemporaryFile()
@@ -71,18 +66,30 @@ def rec_sorted(recs):
       write_tmp()
   if srtd:
     write_tmp()
-  yield from rec_sorted_merge(temps)
+
+  yield from heapq.merge(*((
+    tuple(json.loads(i)) for i in open(f.fileno(), 'r', encoding='utf8')
+  ) for f in temps), key=lambda x: x[0])
+
+def load_parser(kind, f):
+  f = open(f.fileno(), 'rb')
+  if f.peek(1)[:1] == b'\x1f':
+    f = gzip.open(f, 'rt', encoding='latin1')
+  else:
+    f = io.TextIOWrapper(f, encoding='latin1')
+  m = re.search(r'\sFile:\s+([^.]+)\.list\s+', f.readline())
+  if not m:
+    return
+  parser = imdb_parsers[kind].get(m.group(1))
+  if not parser:
+    return
+  if parser:
+    yield from parser(filter(bool, (l.rstrip() for l in f)))
 
 def imdb_parser(kind, filename):
   def wrapper(fn):
-    def _fn(directory):
-      path = os.path.join(directory, filename + '.list.gz')
-      if not os.path.exists(path):
-        return
-      with gzip.open(path, 'rt', encoding='latin1') as f:
-        yield from fn(filter(bool, (l.rstrip() for l in f)))
-    imdb_parsers[kind].append(_fn)
-    return _fn
+    imdb_parsers[kind][filename] = fn
+    return fn
   return wrapper
 
 def skip_till(f, window, pat):
@@ -674,25 +681,63 @@ def parse_biographies(f):
 def main():
   "Run main program."
 
+  def file_arg(path):
+    try:
+      return sys.stdin if path == '-' else open(path, 'rb')
+    except FileNotFoundError:
+      raise argparse.ArgumentTypeError(
+        "'%s' not found" % path
+      )
+
   parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     description='Convert IDMB list files to JSON'
   )
-  parser.add_argument(
-    '-d', '--dir',
-    default='.',
-    help='path to where the .list.gz files are - default is .'
+  subparsers = parser.add_subparsers(
+    title='main commands',
+    dest='cmd'
   )
-  parser.add_argument(
+  subparsers.required = True
+  parser_a = subparsers.add_parser(
+    'convert',
+    help='convert from IMDB list files to JSON'
+  )
+  parser_a.set_defaults(fn=do_convert)
+  parser_a.add_argument(
     'kind',
     choices=['title', 'name'],
     help='choose between movies/people output'
   )
+  parser_a.add_argument(
+    'file',
+    nargs='*',
+    default=[sys.stdin],
+    type=file_arg,
+    help=".list or .list.gz file, '-' means stdin"
+  )
+  parser_a = subparsers.add_parser(
+    'merge',
+    help='merge multiple JSON streams into one'
+  )
+  parser_a.set_defaults(fn=do_merge)
+  parser_a.add_argument(
+    'file',
+    nargs='*',
+    default=[sys.stdin],
+    type=file_arg,
+    help="JSON file, '-' means stdin"
+  )
 
   args = parser.parse_args()
+  args.fn(args)
+
+def do_merge(args):
+  pass
+
+def do_convert(args):
 
   for id, tuples in itertools.groupby(rec_sorted(roundrobin(
-    *(p(args.dir) for p in imdb_parsers[args.kind])
+    *(load_parser(args.kind, f) for f in args.file)
   )), key=lambda x: x[0]):
 
     rec = {'id': id}
