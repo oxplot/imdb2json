@@ -732,7 +732,16 @@ def main():
   args.fn(args)
 
 def do_merge(args):
-  pass
+
+  for id, recs in itertools.groupby(heapq.merge(
+    *((json.loads(l) for l in f) for f in args.file),
+    key=lambda x: x['id']
+  ), key=lambda x: x['id']):
+    rec = {}
+    for r in recs:
+      rec.update(r)
+    json.dump(rec, sys.stdout)
+    print()
 
 def do_convert(args):
 
