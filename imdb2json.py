@@ -18,22 +18,9 @@ try:
 except ImportError:
   import json
 
-FILES = {
-  'name': [
-    'actors', 'actresses', 'cinematographers', 'composers', 'directors',
-    'costume-designers', 'editors', 'producers', 'writers', 'aka-names',
-    'biographies', 'miscellaneous', 'production-designers'
-  ],
-  'title': [
-    'movies', 'taglines', 'trivia', 'running-times', 'keywords',
-    'genres', 'technical', 'aka-titles', 'alternate-versions',
-    'certificates', 'color-info', 'countries', 'crazy-credits',
-    'distributors', 'goofs', 'language', 'literature', 'locations',
-    'miscellaneous-companies', 'special-effects-companies',
-    'production-companies', 'movie-links', 'mpaa-ratings-reasons',
-    'ratings', 'release-dates', 'sound-mix'
-  ],
-}
+STORE, APPEND = 0, 1
+TITLE, NAME = 'title', 'name'
+imdb_parsers = {TITLE: [], NAME: []}
 
 _OUT_BUF = 1000000
 _MAX_SORT_BUF = 100000
@@ -86,13 +73,17 @@ def rec_sorted(recs):
     write_tmp()
   yield from rec_sorted_merge(temps)
 
-def imdb_parser(fn):
-  def _fn(path):
-    if not os.path.exists(path):
-      return
-    with gzip.open(path, 'rt', encoding='latin1') as f:
-      yield from fn(filter(bool, (l.rstrip() for l in f)))
-  return _fn
+def imdb_parser(kind, filename):
+  def wrapper(fn):
+    def _fn(directory):
+      path = os.path.join(directory, filename + '.list.gz')
+      if not os.path.exists(path):
+        return
+      with gzip.open(path, 'rt', encoding='latin1') as f:
+        yield from fn(filter(bool, (l.rstrip() for l in f)))
+    imdb_parsers[kind].append(_fn)
+    return _fn
+  return wrapper
 
 def skip_till(f, window, pat):
   pat = re.compile(pat)
@@ -102,7 +93,7 @@ def skip_till(f, window, pat):
     if pat.search('\n'.join(deq)):
       break
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='movies')
 def parse_movies(f):
 
   skip_till(f, 2, r'^MOVIES LIST\n={8}')
@@ -112,49 +103,62 @@ def parse_movies(f):
       break
     l = l.split('\t')
     yr = [None if x == '????' else int(x) for x in l[-1].split('-', 1)]
-    yield l[0], 'movies', yr
+    yield l[0], STORE, 'year', yr
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='taglines')
 def parse_taglines(f):
 
   skip_till(f, 2, r'^TAG LINES LIST\n={8}')
 
-  id, tags = None, []
+  id = None
   for l in f:
     if l.startswith('--------------'):
       break
     if l.startswith('#'):
-      if tags:
-        yield id, 'taglines', tags
-      id, tags = l[2:], []
-    elif l.startswith('\t'):
-      tags.append(l[1:])
+      id = l[2:]
+    elif l.startswith('\t') and id:
+      yield id, APPEND, 'taglines', l[1:]
 
-  if tags:
-    yield id, 'taglines', tags
+def parse_bullet_pt(f, key):
 
-@imdb_parser
+  id, pts, lines = None, [], []
+  for l in f:
+    if l.startswith('--------------'):
+      break
+    if l.startswith('#'):
+      if lines:
+        pts.append(' '.join(lines))
+      if pts:
+        yield id, STORE, key, pts
+      id, pts, lines = l[2:], [], []
+    elif l.startswith('- '):
+      if lines:
+        pts.append(' '.join(lines))
+      lines = [l[2:].strip()]
+    elif l.startswith('  '):
+      lines.append(l[2:].strip())
+
+  if lines:
+    pts.append(' '.join(lines))
+  if pts:
+    yield id, STORE, key, pts
+
+@imdb_parser(kind=TITLE, filename='trivia')
 def parse_trivia(f):
-
   skip_till(f, 2, r'^FILM TRIVIA\n={8}')
-
   yield from parse_bullet_pt(f, 'trivia')
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='alternate-versions')
 def parse_alternate_versions(f):
-
   skip_till(f, 2, r'^ALTERNATE VERSIONS LIST\n={8}')
+  yield from parse_bullet_pt(f, 'alternate_versions')
 
-  yield from parse_bullet_pt(f, 'alternate-versions')
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='crazy-credits')
 def parse_crazy_credits(f):
-
   skip_till(f, 2, r'^CRAZY CREDITS\n={8}')
+  yield from parse_bullet_pt(f, 'crazy_credits')
 
-  yield from parse_bullet_pt(f, 'crazy-credits')
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='goofs')
 def parse_goofs(f):
 
   skip_till(f, 2, r'^GOOFS LIST\n={8}')
@@ -168,13 +172,13 @@ def parse_goofs(f):
     'MISC': 'misc', 'BOOM': 'boom_mic_visible'
   }
 
-  for id, rtype, pts in parse_bullet_pt(f, 'goofs'):
-    yield id, rtype, [{
+  for id, mix, key, pts in parse_bullet_pt(f, 'goofs'):
+    yield id, mix, key, [{
       'type': type_map[p[:4]],
       'text': p[6:]
     } for p in pts]
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='language')
 def parse_language(f):
 
   skip_till(f, 2, r'^LANGUAGE LIST\n={8}')
@@ -186,33 +190,9 @@ def parse_language(f):
     lang = {'name': l[1]}
     if len(l) > 2:
       lang['note'] = l[2]
-    yield l[0], 'language', lang
+    yield l[0], APPEND, 'languages', lang
 
-def parse_bullet_pt(f, rtype):
-
-  id, pt, lines = None, [], []
-  for l in f:
-    if l.startswith('--------------'):
-      break
-    if l.startswith('#'):
-      if lines:
-        pt.append(' '.join(lines))
-      if pt:
-        yield id, rtype, pt
-      id, pt, lines = l[2:], [], []
-    elif l.startswith('- '):
-      if lines:
-        pt.append(' '.join(lines))
-      lines = [l[2:].strip()]
-    elif l.startswith('  '):
-      lines.append(l[2:].strip())
-
-  if lines:
-    pt.append(' '.join(lines))
-  if pt:
-    yield id, rtype, pt
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='running-times')
 def parse_running_times(f):
 
   skip_till(f, 2, r'^RUNNING TIMES LIST\n={8}')
@@ -269,27 +249,27 @@ def parse_running_times(f):
       if v is not None:
         obj[k] = v
 
-    yield l[0], 'running-times', obj
+    yield l[0], APPEND, 'running_times', obj
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='keywords')
 def parse_keywords(f):
 
   skip_till(f, 2, r'^8: THE KEYWORDS LIST\n={8}')
 
   for l in f:
     l = l.split('\t')
-    yield l[0], 'keywords', l[-1].strip()
+    yield l[0], APPEND, 'keywords', l[-1].strip()
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='genres')
 def parse_genres(f):
 
   skip_till(f, 2, r'^8: THE GENRES LIST\n={8}')
 
   for l in f:
     l = l.split('\t')
-    yield l[0], 'genres', l[-1].strip()
+    yield l[0], APPEND, 'genres', l[-1].strip()
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='technical')
 def parse_technical(f):
 
   skip_till(f, 2, r'^TECHNICAL LIST\n={8}')
@@ -305,16 +285,16 @@ def parse_technical(f):
     val = {'name': val}
     if len(l) > 2:
       val['note'] = l[2]
-    yield l[0], 'technical', (typ, val)
+    yield l[0], APPEND, typ, val
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='aka-titles')
 def parse_aka_titles(f):
 
   skip_till(f, 2, r'^AKA TITLES LIST\n={8}')
 
-  id, akas = None, []
+  id = None
   for l in f:
-    if l.startswith(' '):
+    if l.startswith(' ') and id:
       l = [i for i in l.split('\t') if i]
       if not l[0].startswith('   (aka ') or not l[0].endswith(')'):
         print('bad-aka-title', l)
@@ -322,15 +302,11 @@ def parse_aka_titles(f):
       aka = {'name': l[0][8:-1]} # TODO extract yr, etc
       if len(l) > 1:
         aka['note'] = l[1] # TODO extract country
-      akas.append(aka)
+      yield id, APPEND, 'aka', aka
     else:
-      if akas:
-        yield id, 'aka-titles', akas
-      id, akas = l, []
-  if akas:
-    yield id, 'aka-titles', akas
+      id = l
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='certificates')
 def parse_certificates(f):
 
   skip_till(f, 2, r'^CERTIFICATES LIST\n={8}')
@@ -343,9 +319,9 @@ def parse_certificates(f):
     cert['country'], cert['rating'] = l[1].split(':', 1)
     if len(l) > 2:
       cert['note'] = l[2] # TODO parse the data into sep fields
-    yield l[0], 'certificates', cert
+    yield l[0], APPEND, 'certificates', cert
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='color-info')
 def parse_color_info(f):
 
   skip_till(f, 2, r'^COLOR INFO LIST\n={8}')
@@ -357,9 +333,9 @@ def parse_color_info(f):
     info = {'color': l[1].lower()}
     if len(l) > 2:
       info['note'] = l[2] # TODO parse the data into sep fields
-    yield l[0], 'color-info', info
+    yield l[0], APPEND, 'color_info', info
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='countries')
 def parse_countries(f):
 
   skip_till(f, 2, r'^COUNTRIES LIST\n={8}')
@@ -368,9 +344,9 @@ def parse_countries(f):
     if l.startswith('--------------'):
       break
     l = l.split('\t')
-    yield l[0], 'countries', l[-1]
+    yield l[0], APPEND, 'countries', l[-1]
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='distributors')
 def parse_distributors(f):
 
   skip_till(f, 2, r'^DISTRIBUTORS LIST\n={8}')
@@ -384,9 +360,9 @@ def parse_distributors(f):
     if len(l) > 2:
       dist['note'] = l[2] # TODO separate fields
     
-    yield l[0], 'distributors', dist
+    yield l[0], APPEND, 'distributors', dist
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='literature')
 def parse_literature(f):
 
   skip_till(f, 2, r'^LITERATURE LIST\n={8}')
@@ -399,23 +375,17 @@ def parse_literature(f):
     'PROT': 'production_process_protocols'
   }
 
-  id, lits = None, collections.defaultdict(list)
+  id = None
 
   for l in f:
     if l.startswith('--------------'):
-      if id:
-        yield id, 'literature', lits
-      id, lits = None, collections.defaultdict(list)
-
+      id = None
     elif l.startswith('MOVI:'):
       id = l[6:]
-    else:
-      lits[typ_map[l[:4]]].append(l[6:]) # TODO parse details
+    elif id:
+      yield id, APPEND, typ_map[l[:4]], l[6:] # TODO parse details
 
-  if id:
-    yield id, 'literature', lits
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='locations')
 def parse_locations(f):
 
   skip_till(f, 2, r'^LOCATIONS LIST\n={8}')
@@ -427,9 +397,9 @@ def parse_locations(f):
     loc = {'name': l[1]}
     if len(l) > 2:
       loc['note'] = l[2]
-    yield l[0], 'locations', loc
+    yield l[0], APPEND, 'locations', loc
 
-def parse_companies(f, rtype, type):
+def parse_companies(f, type):
 
   for l in f:
     if l.startswith('--------------'):
@@ -438,33 +408,24 @@ def parse_companies(f, rtype, type):
     comp = {'name': l[1], 'type': type}
     if len(l) > 2:
       comp['note'] = l[2]
-    yield l[0], rtype, comp
+    yield l[0], APPEND, 'companies', comp
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='miscellaneous-companies')
 def parse_miscellaneous_companies(f):
-
   skip_till(f, 2, r'^MISCELLANEOUS COMPANIES LIST\n={8}')
+  yield from parse_companies(f, 'miscellaneous')
 
-  yield from parse_companies(
-    f, 'miscellaneous-companies', 'miscellaneous')
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='production-companies')
 def parse_production_companies(f):
-
   skip_till(f, 2, r'^PRODUCTION COMPANIES LIST\n={8}')
+  yield from parse_companies(f, 'production')
 
-  yield from parse_companies(
-    f, 'production-companies', 'production')
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='special-effects-companies')
 def parse_special_effects_companies(f):
-
   skip_till(f, 2, r'^SPECIAL EFFECTS COMPANIES LIST\n={8}')
+  yield from parse_companies(f, 'special_effects')
 
-  yield from parse_companies(
-    f, 'special-effects-companies', 'special_effects')
-
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='movie-links')
 def parse_movie_links(f):
 
   skip_till(f, 2, r'^MOVIE LINKS LIST\n={8}')
@@ -476,40 +437,59 @@ def parse_movie_links(f):
     '  (alternate language version of ': 'alt_language'
   }
 
-  id, links = None, []
+  id = None
   for l in f:
     if l.startswith('--------------'):
       break
-    for relf, relt in rel_map.items():
-      if l.startswith(relf):
-        links.append({'title': l[len(relf):-1], 'rel': relt})
-        break
+    if l.startswith(' ') and id:
+      for relf, relt in rel_map.items():
+        if l.startswith(relf):
+          link = {'title': l[len(relf):-1], 'rel': relt}
+          yield id, APPEND, 'links', link
+          break
     else:
-      if id:
-        yield id, 'movie-links', links
-      id, links = l, []
-  if id:
-    yield id, 'movie-links', links
+      id = l
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='mpaa-ratings-reasons')
 def parse_mpaa_ratings_reasons(f):
 
   skip_till(f, 2, r'^MPAA RATINGS REASONS LIST\n={8}')
 
-  id, reason = None, []
+  pat = re.compile(r'''
+    ^\s*[:-]?\s*Rated\s+(?P<rating>.+?)
+    (?:\s+(?P<reason>(?:on|for)\s+.+))?$
+  ''', re.X | re.I)
+
+  def build(rr):
+    rr = ' '.join(rr)
+    m = pat.match(rr)
+    if m:
+      rr = {'rating': m.group('rating').replace(' ', '')}
+      if m.group('reason'):
+        rr['reason'] = m.group('reason')
+      return id, STORE, 'mpaa_rating', rr
+    else:
+      print('bad-mpaa', rr, file=sys.stderr)
+
+  id, rr = None, []
   for l in f:
     if l.startswith('--------------'):
-      if id and reason:
-        yield id, 'mpaa-ratings-reasons', ' '.join(reason)
-      id, reason = None, []
+      if rr and id:
+        rr = build(rr)
+        if rr:
+          yield rr
+      id, rr = None, []
     elif l.startswith('MV: '):
       id = l[4:]
     elif l.startswith('RE: '):
-      reason.append(l[4:])
-  if id and reason:
-    yield id, 'mpaa-ratings-reasons', ' '.join(reason)
+      rr.append(l[4:])
 
-@imdb_parser
+  if rr and id:
+    rr = build(rr)
+    if rr:
+      yield rr
+
+@imdb_parser(kind=TITLE, filename='ratings')
 def parse_ratings(f):
 
   skip_till(f, 2, r'^MOVIE RATINGS REPORT\nNew\s+Distri')
@@ -520,12 +500,12 @@ def parse_ratings(f):
     if l.startswith('--------------'):
       break
     m = pat.match(l)
-    yield m.group(4), 'ratings', {
+    yield m.group(4), STORE, 'rating', {
       'rank': float(m.group(3)), 'votes': int(m.group(2)),
       'distribution': m.group(1)
     }
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='release-dates')
 def parse_release_dates(f):
 
   skip_till(f, 2, r'^RELEASE DATES LIST\n={8}')
@@ -538,9 +518,9 @@ def parse_release_dates(f):
     rd = {'country': p2[0], 'date': p2[1]} # TODO parse date
     if len(l) > 2:
       rd['note'] = l[2]
-    yield l[0], 'release-dates', rd
+    yield l[0], APPEND, 'release_dates', rd
 
-@imdb_parser
+@imdb_parser(kind=TITLE, filename='sound-mix')
 def parse_sound_mix(f):
 
   skip_till(f, 2, r'^SOUND-MIX LIST\n={8}')
@@ -552,15 +532,14 @@ def parse_sound_mix(f):
     mix = {'type': l[1].lower()}
     if len(l) > 2:
       mix['note'] = l[2]
-    yield l[0], 'sound-mix', mix
+    yield l[0], APPEND, 'sound_mix', mix
 
-def person_parser_gen(file_name, role):
-  @imdb_parser
-  def parser(f):
-    yield from parse_people(f, file_name, role)
-  return parser
+def people_parser_gen(filename, role):
+  @imdb_parser(kind=NAME, filename=filename)
+  def _parse_people(f):
+    yield from parse_people(f, role)
 
-for file_name, role in [
+for filename, role in [
   ('actresses', 'actress'), ('composers', 'composer'),
   ('actors', 'actor'), ('directors', 'director'),
   ('cinematographers', 'cinematographer'), ('editors', 'editor'),
@@ -568,10 +547,9 @@ for file_name, role in [
   ('producers', 'producer'), ('miscellaneous', 'miscellaneous'),
   ('production-designers', 'production-designer')
 ]:
-  globals()['parse_' + file_name.replace('-', '_')] = \
-    person_parser_gen(file_name, role)
+  people_parser_gen(filename, role)
 
-def parse_people(f, rtype, prole):
+def parse_people(f, prole):
 
   skip_till(f, 2, r'^Name\s+Titles\n----\s+-----')
 
@@ -601,41 +579,33 @@ def parse_people(f, rtype, prole):
         print('bad-role', v, file=sys.stderr)
     return role
 
-  id, roles = None, []
+  id = None
   for l in f:
     if l.startswith('--------------'):
       break
     l = l.split('\t')
-    if l[0]:
-      if roles:
-        yield id, rtype, roles
-      id, roles = l[0], [get_role(l[-1])]
-    else:
-      roles.append(get_role(l[-1]))
+    if id or l[0]:
+      if l[0]:
+        id = l[0]
+      yield id, APPEND, 'roles', get_role(l[-1])
 
-  if roles:
-    yield id, rtype, roles
-
-@imdb_parser
+@imdb_parser(kind=NAME, filename='aka-names')
 def parse_aka_names(f):
 
   skip_till(f, 2, r'^AKA NAMES LIST\n={8}')
 
-  id, akas = None, []
+  id = None
   for l in f:
     if l.startswith(' '):
       if not l.startswith('   (aka ') or not l.endswith(')'):
         print('bad-aka-name', l)
         continue
-      akas.append(l[8:-1])
+      if id:
+        yield id, APPEND, 'aka', l[8:-1]
     else:
-      if akas:
-        yield id, 'aka-names', akas
-      id, akas = l, []
-  if akas:
-    yield id, 'aka-names', akas
+      id = l
 
-@imdb_parser
+@imdb_parser(kind=NAME, filename='biographies')
 def parse_biographies(f):
 
   skip_till(f, 2, r'^BIOGRAPHY LIST\n={8}')
@@ -685,7 +655,8 @@ def parse_biographies(f):
   for l in f:
     if l.startswith('-------'):
       if bio and id:
-        yield id, 'biographies', build_bio(bio)
+        for k, v in build_bio(bio).items():
+          yield id, STORE, k, v
       id, bio = None, collections.defaultdict(list)
     else:
       l = l.split(':', 1)
@@ -697,91 +668,8 @@ def parse_biographies(f):
       else:
         bio[l[0]].append(l[1][1:])
   if bio and id:
-    yield id, 'biographies', build_bio(bio)
-
-def mix_title(title, rtype, obj):
-  if 'cat' not in title:
-    pass # TODO
-  if rtype == 'movies':
-    title['year'] = obj
-  elif rtype in  (
-    'taglines', 'trivia', 'alternate-versions',
-    'crazy-credits', 'goofs', 'literature', 'movie-links',
-    'mpaa-ratings-reasons', 'ratings'
-  ):
-    title[rtype] = obj
-  elif rtype in (
-    'keywords', 'genres', 'certificates', 'color-info', 'countries',
-    'running-times', 'aka-titles', 'distributors', 'language',
-    'locations', 'release-dates', 'sound-mix'
-  ):
-    coll = title.get(rtype)
-    if coll:
-      coll.append(obj)
-    else:
-      title[rtype] = [obj]
-  elif rtype == 'technical':
-    title['technical'][obj[0]].append(obj[1])
-  elif rtype in (
-    'miscellaneous-companies', 'special-effects-companies',
-    'production-companies'
-  ):
-    companies = title.get('companies')
-    if companies is None:
-      companies = []
-      title['companies'] = companies
-    companies.append(obj)
-
-def mix_name(name, rtype, obj):
-  if rtype in (
-    'actresses', 'actors', 'cinematographers', 'composers', 'directors',
-    'costume-designers', 'editors', 'producers', 'writers',
-    'miscellaneous', 'production-designers'
-  ):
-    roles = name.get('roles')
-    if roles is None:
-      roles = []
-      name['roles'] = roles
-    roles.extend(obj)
-  elif rtype in ('aka-names', 'biographies'):
-    name[rtype] = obj
-
-def init_title(title):
-  title['technical'] = collections.defaultdict(list)
-
-def init_name(title):
-  pass
-
-def finalize_title(title):
-
-  for v in title['technical'].values():
-    v.sort(key=lambda x: x['name'])
-  title.update(title['technical'])
-  del title['technical']
-
-  if 'literature' in title:
-    title.update(title['literature'])
-    del title['literature']
-
-  for t in ('keywords', 'genres'):
-    kg = title.get(t)
-    if kg:
-      title[t].sort(key=str.lower)
-
-  if 'akas' in title:
-    title['akas'].sort(key=lambda x: x['name'].lower())
-
-  if 'companies' in title:
-    title['companies'].sort(key=lambda x: (x['name'].lower(), x['type']))
-
-def finalize_name(name):
-  if 'roles' in name:
-    name['roles'].sort(key=lambda x: (x['title'].lower(), x['role']))
-  if 'akas' in name:
-    name['akas'].sort(key=str.lower)
-  if 'biographies' in name:
-    name.update(name['biographies'])
-    del name['biographies']
+    for k, v in build_bio(bio).items():
+      yield id, STORE, k, v
 
 def main():
   "Run main program."
@@ -808,22 +696,14 @@ def main():
   )
 
   args = parser.parse_args()
-  mixer = globals()['mix_' + args.kind]
-  initer = globals()['init_' + args.kind]
-  finalizer = globals()['finalize_' + args.kind]
-
-  parsers = [globals()['parse_' + f.replace('-', '_')](
-      os.path.join(args.dir, f + '.list.gz')
-  ) for f in FILES[args.kind]]
 
   if not args.line:
     print('[')
     first_line = True
   
-  for id, tuples in itertools.groupby(
-    rec_sorted(roundrobin(*parsers)),
-    key=lambda x: x[0]
-  ):
+  for id, tuples in itertools.groupby(rec_sorted(roundrobin(
+    *(p(args.dir) for p in imdb_parsers[args.kind])
+  )), key=lambda x: x[0]):
 
     if not args.line:
       if first_line:
@@ -831,12 +711,18 @@ def main():
       else:
         print(',')
 
-    rec = {'#': id}
-    initer(rec)
-    for _, rtype, obj in tuples:
-      mixer(rec, rtype, obj)
-    finalizer(rec)
-    print(json.dumps(rec), end='')
+    rec = {'id': id}
+
+    for _, mix, key, value in tuples:
+      if mix == STORE:
+        rec[key] = value
+      elif mix == APPEND:
+        lst = rec.get(key)
+        if lst is None:
+          rec[key] = lst = []
+        lst.append(value)
+
+    json.dump(rec, sys.stdout)
 
     if args.line:
       print()
@@ -844,7 +730,7 @@ def main():
   if not args.line:
     print('\n]')
 
-  print(end='', flush=True)
+  sys.stdout.flush()
 
 if __name__ == '__main__':
   main()
