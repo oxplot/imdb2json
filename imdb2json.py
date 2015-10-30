@@ -18,7 +18,6 @@ try:
 except ImportError:
   import json
 
-
 FILES = {
   'name': [
     'actors', 'actresses', 'cinematographers', 'composers', 'directors',
@@ -36,43 +35,55 @@ FILES = {
   ],
 }
 
-_MAX_WRITEOUT_BUF = 1000000
-_MAX_SORT_BUF = 60000
-_MAX_SORT_TEMPS = 100
+_OUT_BUF = 1000000
+_MAX_SORT_BUF = 100000
 
 sys.stdout = open(
-  sys.stdout.fileno(), 'w', encoding='utf8', buffering=_MAX_WRITEOUT_BUF
+  sys.stdout.fileno(), 'w', encoding='utf8', buffering=_OUT_BUF
 )
+
+def roundrobin(*iterables):
+  pending = len(iterables)
+  nexts = itertools.cycle(iter(it).__next__ for it in iterables)
+  while pending:
+    try:
+      for next in nexts:
+        yield next()
+    except StopIteration:
+      pending -= 1
+      nexts = itertools.cycle(itertools.islice(nexts, pending))
 
 def rec_sorted_merge(temps):
   yield from heapq.merge(*[(
-    tuple(json.loads(i.rstrip())) for i in f
-  ) for f in temps])
+    tuple(json.loads(i.rstrip()))
+    for i in open(f.fileno(), 'r', encoding='utf8')
+  ) for f in temps], key=lambda x: x[0])
 
 def rec_sorted(recs):
   srtd = collections.deque()
   temps = []
+
+  def write_tmp():
+    tmp = tempfile.TemporaryFile()
+    tmpw = open(
+      tmp.fileno(), 'w', encoding='utf8', buffering=_OUT_BUF,
+      closefd=False
+    )
+    for sr in sorted(srtd, key=lambda x: x[0]):
+      json.dump(sr, tmpw)
+      tmpw.write('\n')
+    tmpw.flush()
+    del tmpw
+    tmp.seek(0)
+    srtd.clear()
+    temps.append(tmp)
+
   for rec in recs:
     srtd.append(rec)
     if len(srtd) >= _MAX_SORT_BUF:
-      tmp = tempfile.TemporaryFile(mode='w+', encoding='utf8')
-      tmp.write('\n'.join(json.dumps(sr) for sr in sorted(srtd)))
-      tmp.seek(0)
-      srtd.clear()
-      temps.append(tmp)
-      if len(temps) >= _MAX_SORT_TEMPS:
-        tmp = tempfile.TemporaryFile(
-          mode='w+', encoding='utf8', buffering=_MAX_WRITEOUT_BUF)
-        for r in rec_sorted_merge(temps):
-          tmp.write(json.dumps(r))
-          tmp.write('\n')
-        tmp.seek(0)
-        temps = [tmp]
+      write_tmp()
   if srtd:
-    tmp = tempfile.TemporaryFile(mode='w+', encoding='utf8')
-    tmp.write('\n'.join(json.dumps(sr) for sr in sorted(srtd)))
-    tmp.seek(0)
-    temps.append(tmp)
+    write_tmp()
   yield from rec_sorted_merge(temps)
 
 def imdb_parser(fn):
@@ -810,7 +821,7 @@ def main():
     first_line = True
   
   for id, tuples in itertools.groupby(
-    rec_sorted(itertools.chain(*parsers)),
+    rec_sorted(roundrobin(*parsers)),
     key=lambda x: x[0]
   ):
 
