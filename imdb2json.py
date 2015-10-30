@@ -679,12 +679,6 @@ def main():
     description='Convert IDMB list files to JSON'
   )
   parser.add_argument(
-    '-l', '--line',
-    action="store_true",
-    help='put each title/name JSON object on its own independent line'
-         ' without enclosing everying in one big JSON list'
-  )
-  parser.add_argument(
     '-d', '--dir',
     default='.',
     help='path to where the .list.gz files are - default is .'
@@ -697,19 +691,9 @@ def main():
 
   args = parser.parse_args()
 
-  if not args.line:
-    print('[')
-    first_line = True
-  
   for id, tuples in itertools.groupby(rec_sorted(roundrobin(
     *(p(args.dir) for p in imdb_parsers[args.kind])
   )), key=lambda x: x[0]):
-
-    if not args.line:
-      if first_line:
-        first_line = False
-      else:
-        print(',')
 
     rec = {'id': id}
 
@@ -723,12 +707,7 @@ def main():
         lst.append(value)
 
     json.dump(rec, sys.stdout)
-
-    if args.line:
-      print()
-
-  if not args.line:
-    print('\n]')
+    print()
 
   sys.stdout.flush()
 
