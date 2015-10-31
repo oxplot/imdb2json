@@ -58,6 +58,71 @@ sys.stdout = open(
   sys.stdout.fileno(), 'w', encoding='utf8', buffering=_OUT_BUF
 )
 
+TID_PAT = re.compile(r'''^
+  (?:
+    "(?P<series>[^"]+)"\s+\([?\d/IVLX]{4,}\)
+    (?:\s+(?P<epi>\{)
+      (?P<epi_title>.+?)?
+      (?:
+        \s*\([#](?P<season>\d+)\.(?P<episode>\d+)\)
+        |
+        \s*\(
+          (?P<epi_yr>\d{4})-(?P<epi_mon>\d{2})-(?P<epi_day>\d{2})
+        \)
+      )?
+    \})?
+    |
+    (?P<non_series>.+?)\s+\([?\d/IVLX]{4,}\)
+    (?P<tv>\s+\(TV\))?
+    (?P<video>\s+\(V\))?
+    (?P<videogame>\s+\(VG\))?
+  )
+  (?P<suspended>\s+\{\{SUSPENDED\}\})?
+$''', re.X)
+
+def construct_title(id):
+  rec = {'id': id}
+  m = TID_PAT.match(id)
+  if m:
+    if m.group('series'):
+      rec['title'] = m.group('series')
+      if m.group('epi'):
+        rec['episode'] = episode = {}
+        rec['kind'] = 'episode'
+        if m.group('epi_title'):
+          episode['title'] = m.group('epi_title')
+        if m.group('season'):
+          episode['season'] = int(m.group('season'))
+        if m.group('episode'):
+          episode['episode'] = int(m.group('episode'))
+        if m.group('epi_yr'):
+          episode['year'] = int(m.group('epi_yr'))
+          episode['month'] = int(m.group('epi_mon'))
+          episode['day'] = int(m.group('epi_day'))
+      else:
+        rec['kind'] = 'series'
+    else:
+      rec['title'] = m.group('non_series')
+      if m.group('tv'):
+        rec['kind'] = 'tv-movie'
+      elif m.group('video'):
+        rec['kind'] = 'video'
+      elif m.group('videogame'):
+        rec['kind'] = 'videogame'
+      else:
+        rec['kind'] = 'movie'
+    if m.group('suspended'):
+      rec['suspended'] = True
+  else:
+    print('bad-tid', id, file=sys.stderr)
+  return rec
+
+def construct_name(id):
+  rec = {'id': id}
+  return rec
+
+constructors = {TITLE: construct_title, NAME: construct_name}
+
 def roundrobin(*iterables):
   pending = len(iterables)
   nexts = itertools.cycle(iter(it).__next__ for it in iterables)
@@ -773,11 +838,13 @@ def do_merge(args):
 
 def do_convert(args):
 
+  construct = constructors[args.kind]
+
   for id, tuples in itertools.groupby(rec_sorted(roundrobin(
     *(load_parser(args.kind, f) for f in args.file)
   )), key=lambda x: x[0]):
 
-    rec = {'id': id}
+    rec = construct(id)
 
     for _, mix, key, value in tuples:
       if mix == STORE:
