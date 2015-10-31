@@ -45,16 +45,21 @@ The above will take some time to run. Even with one file, *imdb2json*
 still needs to sort the file first and so there will be a delay till the
 first line is output.
 
-It's easy to tweak the output to make it one big JSON list so it can be
-loaded all at once (probably bad idea) or be pretty printed using other
-programs like `json_reformat` from [yajl][] library:
+Fun stuff
+=========
 
-    (
-      echo '['
-      python imdb2json.py convert title taglines.list.gz |
-        sed '2,$s/^/,/'
-      echo ']'
-    ) | json_reformat | less
+For starters, you can pretty print the output with something like the
+awesome [jq][]:
+
+    python imdb2json.py convert ratings.list.gz | jq .
+
+Now let's do something semi-useful. Let's find out the top 20
+shows/movies with 100K+ votes:
+
+    python imdb2json.py convert title ratings.list.gz | jq -r '
+      [.] | map(select(.rating.votes > 100000)) |
+      .[] | [.id, .rating.rank] | @tsv
+    ' | sort -t$'\t' -k2 -rn | head -20
 
 You can also convert each file separately and then merge them:
 
@@ -62,4 +67,4 @@ You can also convert each file separately and then merge them:
 
 [IMDB]: http://www.imdb.com/
 [dump]: http://www.imdb.com/interfaces
-[yajl]: http://lloyd.github.com/yajl/
+[jq]: https://stedolan.github.io/jq/
