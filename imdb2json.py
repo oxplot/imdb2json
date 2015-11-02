@@ -634,6 +634,29 @@ def parse_sound_mix(f):
       mix['note'] = l[2]
     yield l[0], APPEND, 'sound_mix', mix
 
+@imdb_parser(kind=TITLE, filename='plot')
+def parse_plot(f):
+
+  skip_till(f, 2, r'^PLOT SUMMARIES LIST\n={8}')
+
+  id, lines, author = None, [], None
+  for l in f:
+    if l.startswith('--------------'):
+      if id and lines:
+        yield id, APPEND, 'plots', {'plot': ' '.join(lines)}
+      id, lines, author = None, [], None
+    elif l.startswith('MV: '):
+      id = l[4:]
+    elif l.startswith('PL: '):
+      lines.append(l[4:])
+    elif l.startswith('BY: '):
+      author = l[4:]
+      yield id, APPEND, 'plots', {'by': author, 'plot': ' '.join(lines)}
+      lines, author = [], None
+
+  if id and lines:
+    yield id, APPEND, 'plots', {'plot': ' '.join(lines)}
+
 def people_parser_gen(filename, role):
   @imdb_parser(kind=NAME, filename=filename)
   def _parse_people(f):
