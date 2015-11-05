@@ -7,10 +7,10 @@ is outright rubbish. Each file has a different free text format and
 polluted by documentation. *imdb2json* seeks to remedy this by parsing
 the files and outputting fairly sane JSON.
 
-*imdb2json* requires a recent python 3 and I don't have any plans to
-make this work with older versions of python. Also, this is a work in
-progress and not every file and/or every piece of data is currently
-parsed. Feel free to send patches/pull requests.
+*imdb2json* requires python 3.5 and I don't have any plans to make this
+work with older versions of python. Also, this is a work in progress and
+not every file and/or every piece of data is currently parsed. Feel free
+to send patches/pull requests.
 
 Usage
 =====
