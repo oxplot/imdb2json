@@ -51,7 +51,7 @@ Fun stuff
 For starters, you can pretty print the output with something like the
 awesome [jq][]:
 
-    python imdb2json.py convert ratings.list.gz | jq .
+    python imdb2json.py convert title ratings.list.gz | jq .
 
 Now let's do something semi-useful. Let's find out the top 20
 shows/movies with 100K+ votes:
