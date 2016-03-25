@@ -666,7 +666,7 @@ for filename, role in [
   ('actresses', 'actress'), ('composers', 'composer'),
   ('actors', 'actor'), ('directors', 'director'),
   ('cinematographers', 'cinematographer'), ('editors', 'editor'),
-  ('costume-designers', 'costumer-designer'), ('writers', 'writer'),
+  ('costume-designers', 'costume-designer'), ('writers', 'writer'),
   ('producers', 'producer'), ('miscellaneous', 'miscellaneous'),
   ('production-designers', 'production-designer')
 ]:
