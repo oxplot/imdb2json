@@ -849,10 +849,10 @@ def main():
 
 def do_merge(args):
 
-  for id, recs in itertools.groupby(heapq.merge(
-    *((json.loads(l) for l in f) for f in args.file),
-    key=lambda x: x['id']
-  ), key=lambda x: x['id']):
+  for id, recs in itertools.groupby(heapq.merge(*(
+    (json.loads(l) for l in open(f.fileno(), 'r', encoding='utf8'))
+    for f in args.file
+  ), key=lambda x: x['id']), key=lambda x: x['id']):
     rec = {}
     for r in recs:
       rec.update(r)
