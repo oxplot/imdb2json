@@ -21,7 +21,7 @@ mirror, below is an easy way to get all the files:
 
     BASE='ftp://ftp.fu-berlin.de/pub/misc/movies/database/'
     curl -sl "$BASE" | grep '\.list\.gz$' |
-      parallel --gnu -j2 curl -s -o {} "$BASE"{}
+      parallel -j2 curl -s -o {} "$BASE"{}
 
 *imdb2json* can read both gzipped and plain text files. It detects the
 type of file based on its content so file names don't matter.
@@ -45,6 +45,18 @@ The above will take some time to run. Even with one file, *imdb2json*
 still needs to sort the file first and so there will be a delay till the
 first line is output.
 
+If you have a multicore machine, you should be able to get a faster
+processing by running multiple copies of *imdb2json*:
+
+    python imdb2json.py list title |
+      parallel python imdb2json.py convert title {}.list.gz '>' {}.json
+
+`list` command outputs the supported IMDB files one per line and GNU
+parallel runs as many instances of *imdb2json* as there are CPU cores.
+After the above is complete, you can merge all the JSON files into one:
+
+    python imdb2json.py merge *.json > all.json
+
 Fun stuff
 =========
 
@@ -60,10 +72,6 @@ shows/movies with 100K+ votes:
       [.] | map(select(.rating.votes > 100000)) |
       .[] | [.id, .rating.rank] | @tsv
     ' | sort -t$'\t' -k2 -rn | head -20
-
-You can also convert each file separately and then merge them:
-
-    python imdb2json.py merge actors.json directors.json
 
 [IMDB]: http://www.imdb.com/
 [dump]: http://www.imdb.com/interfaces

@@ -843,9 +843,24 @@ def main():
     type=file_arg,
     help="JSON file, '-' means stdin"
   )
+  parser_a = subparsers.add_parser(
+    'list',
+    help='list the supported IMDB file names'
+  )
+  parser_a.set_defaults(fn=do_list)
+  parser_a.add_argument(
+    'kind',
+    choices=['title', 'name'],
+    help='choose between movies/people kind'
+  )
 
   args = parser.parse_args()
   args.fn(args)
+
+def do_list(args):
+
+  for n in sorted(imdb_parsers[args.kind]):
+    print(n)
 
 def do_merge(args):
 
