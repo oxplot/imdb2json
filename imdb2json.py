@@ -620,6 +620,11 @@ def parse_release_dates(f):
       rd['note'] = l[2]
     yield l[0], APPEND, 'release_dates', rd
 
+@imdb_parser(kind=TITLE, filename='soundtracks')
+def parse_sound_mix(f):
+  skip_till(f, 2, r'^SOUNDTRACKS\n={8}')
+  yield from parse_bullet_pt(f, 'soundtracks')
+
 @imdb_parser(kind=TITLE, filename='sound-mix')
 def parse_sound_mix(f):
 
