@@ -1,3 +1,7 @@
+**IMDB has stopped updating the files that this script processes. You
+can still download a frozen set as of late late 2017 at
+ftp://ftp.fu-berlin.de/pub/misc/movies/database/frozendata/ .**
+
 IMDB -> JSON
 ============
 
@@ -19,7 +23,7 @@ You need to download the `.list.gz` files from the mirrors provided on
 [IMDB website][dump] onto your machine first. Say you pick the Germany
 mirror, below is an easy way to get all the files:
 
-    BASE='ftp://ftp.fu-berlin.de/pub/misc/movies/database/'
+    BASE='ftp://ftp.fu-berlin.de/pub/misc/movies/database/frozendata/'
     curl -sl "$BASE" | grep '\.list\.gz$' |
       parallel -j2 curl -s -o {} "$BASE"{}
 
