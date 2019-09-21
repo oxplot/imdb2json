@@ -77,6 +77,17 @@ shows/movies with 100K+ votes:
       .[] | [.id, .rating.rank] | @tsv
     ' | sort -t$'\t' -k2 -rn | head -20
 
+Movie by Soundtrack
+===================
+
+Another way to find movies to watch is to look up titles with
+soundtracks from your favorite artists. Here's an example of finding
+titles with >1000 ratings with soundtracks performed by Depeche Mode:
+
+    grep -i 'depeche mode' all.json |
+      jq -r 'select(.rating.votes > 1000) | [.id, .rating.rank] | @tsv' |
+      sort -t$'\t' -k2 -rn
+
 [IMDB]: http://www.imdb.com/
 [dump]: http://www.imdb.com/interfaces
 [jq]: https://stedolan.github.io/jq/
